@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Ledolab Business Club — Закрытый Отбор</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      /* Глубокая премиальная сине-черная палитра на основе референса сайта */
+      --bg: #060b19;
+      --card: rgba(11, 20, 44, 0.94);
+      --card-2: rgba(20, 34, 72, 0.85);
+      --text: #ffffff;
+      --muted: #8fa0be;
+      --accent: #FF6B00; /* Фирменный оранжевый вогняний */
+      --accent-2: #FF9343;
+      --brand-blue: #00E5FF; /* Высокотехнологичный синий для фокуса и свечения */
+      --border: rgba(255, 107, 0, 0.15);
+      --shadow: 0 30px 70px rgba(0, 0, 0, 0.6);
+      --radius: 24px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: var(--text);
+      /* Наслоение радиальных градиентов для воссоздания синей атмосферы сайта */
+      background:
+        radial-gradient(circle at 50% 15%, rgba(0, 229, 255, 0.12), transparent 45%),
+        radial-gradient(circle at 15% 75%, rgba(255, 107, 0, 0.08), transparent 35%),
+        radial-gradient(circle at 85% 85%, rgba(16, 31, 66, 0.9), transparent 50%),
+        linear-gradient(180deg, #040814 0%, #0a1128 100%);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 16px 12px;
+      overflow-x: hidden;
+    }
+
+    /* Интерактивные фоновые маркеры */
+    .bg-icons {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      overflow: hidden;
+      opacity: 0.1;
+      z-index: 0;
+    }
+
+    .bg-icons span {
+      position: absolute;
+      font-size: 32px;
+      will-change: transform, opacity;
+      animation: floatUp 14s linear infinite;
+      filter: drop-shadow(0 0 12px rgba(0, 229, 255, 0.2));
+    }
+
+    .bg-icons span:nth-child(1) { left: 8%; top: 80%; animation-delay: 0s; }
+    .bg-icons span:nth-child(2) { left: 82%; top: 70%; animation-delay: 3s; }
+    .bg-icons span:nth-child(3) { left: 20%; top: 90%; animation-delay: 6s; }
+    .bg-icons span:nth-child(4) { left: 75%; top: 85%; animation-delay: 9s; }
+
+    @keyframes floatUp {
+      0% { transform: translateY(0) rotate(0deg) scale(0.8); opacity: 0; }
+      15% { opacity: 1; }
+      85% { opacity: 1; }
+      100% { transform: translateY(-130vh) rotate(360deg) scale(1.1); opacity: 0; }
+    }
+
+    /* Контейнер премиум-класса */
+    .quiz-container {
+      width: 100%;
+      max-width: 410px;
+      background: var(--card);
+      border: 1px solid rgba(0, 229, 255, 0.1);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(25px);
+      -webkit-backdrop-filter: blur(25px);
+      overflow: hidden;
+      position: relative;
+      z-index: 1;
+    }
+
+    .top-bar {
+      padding: 22px 20px 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.01), rgba(255, 255, 255, 0));
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .brand-title {
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      background: linear-gradient(90deg, #FFFFFF, var(--muted));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .brand-badge {
+      padding: 5px 12px;
+      border-radius: 999px;
+      background: rgba(255, 107, 0, 0.12);
+      border: 1px solid rgba(255, 107, 0, 0.3);
+      color: var(--accent-2);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+    }
+
+    .progress-wrap {
+      display: none;
+      margin-top: 16px;
+    }
+
+    .progress-wrap.visible {
+      display: block;
+    }
+
+    .progress-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 5px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.06);
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 16.6%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--accent), var(--brand-blue));
+      transition: width 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 0 14px rgba(0, 229, 255, 0.4);
+    }
+
+    .content {
+      padding: 24px 20px;
+    }
+
+    /* Стартовый экран */
+    .hero {
+      display: none;
+      animation: fadeSlide 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .hero.active {
+      display: block;
+    }
+
+    .hero-title {
+      text-align: center;
+      font-size: 26px;
+      font-weight: 900;
+      margin: 12px 0 14px;
+      line-height: 1.25;
+      letter-spacing: -0.5px;
+      text-transform: uppercase;
+      background: linear-gradient(135deg, #FFFFFF 40%, #ffbe85 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-subtitle {
+      text-align: center;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.55;
+      margin: 0 0 24px;
+    }
+
+    /* Блок болей клиентов */
+    .pain-block {
+      background: var(--card-2);
+      border: 1px solid rgba(0, 229, 255, 0.08);
+      border-radius: 18px;
+      padding: 18px 16px;
+      margin-bottom: 26px;
+    }
+
+    .pain-block h3 {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--accent-2);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 14px;
+      text-align: center;
+    }
+
+    .pain-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .pain-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      font-size: 14px;
+      line-height: 1.4;
+      color: #e2e8f0;
+    }
+
+    .pain-icon {
+      font-size: 16px;
+      margin-top: 1px;
+    }
+
+    /* Премиальные кнопки */
+    .start-btn,
+    .option-btn,
+    .back-btn {
+      width: 100%;
+      border: none;
+      border-radius: 16px;
+      cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+      font-weight: 700;
+    }
+
+    .start-btn {
+      padding: 16px 20px;
+      background: linear-gradient(135deg, var(--accent), #ff8426);
+      color: white;
+      font-size: 16px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      box-shadow: 0 12px 30px rgba(255, 107, 0, 0.3);
+    }
+
+    .start-btn:active,
+    .option-btn:active,
+    .back-btn:active {
+      transform: scale(0.98);
+    }
+
+    /* Экраны шагов */
+    .step {
+      display: none;
+      animation: fadeSlide 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .step.active {
+      display: block;
+    }
+
+    @keyframes fadeSlide {
+      from { opacity: 0; transform: translateY(14px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .step-kicker {
+      color: var(--brand-blue);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .step-title {
+      font-size: 22px;
+      font-weight: 800;
+      line-height: 1.25;
+      margin-bottom: 8px;
+    }
+
+    .step-desc {
+      color: var(--muted);
+      font-size: 13.5px;
+      line-height: 1.45;
+      margin-bottom: 22px;
+      font-style: italic;
+    }
+
+    .options {
+      display: grid;
+      gap: 12px;
+    }
+
+    .option-btn {
+      text-align: left;
+      padding: 15px 16px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.00));
+      color: var(--text);
+      border: 1px solid rgba(255,255,255,0.05);
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .option-btn:hover, .option-btn.selected {
+      border-color: rgba(0, 229, 255, 0.4);
+      background: rgba(0, 229, 255, 0.03);
+      box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+    }
+
+    .option-icon {
+      width: 42px;
+      height: 42px;
+      flex: 0 0 42px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 229, 255, 0.05);
+      border: 1px solid rgba(0, 229, 255, 0.15);
+      font-size: 19px;
+    }
+
+    .option-text {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .option-text strong {
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .option-text span {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .footer-row {
+      margin-top: 22px;
+    }
+
+    .back-btn {
+      padding: 13px;
+      background: rgba(255,255,255,0.03);
+      color: var(--text);
+      border: 1px solid rgba(255,255,255,0.05);
+      font-size: 14px;
+    }
+
+    /* Лоадеры */
+    .loading {
+      display: none;
+      text-align: center;
+      padding: 24px 0 12px;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .loading.visible {
+      display: block;
+      animation: fadeSlide 0.3s ease;
+    }
+
+    .dots {
+      display: inline-flex;
+      gap: 6px;
+      margin-top: 14px;
+    }
+
+    .dots span {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--accent);
+      opacity: 0.3;
+      animation: pulse 1s infinite ease-in-out;
+    }
+
+    .dots span:nth-child(2) { animation-delay: 0.2s; }
+    .dots span:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes pulse {
+      0%, 100% { transform: translateY(0); opacity: 0.3; }
+      50% { transform: translateY(-5px); opacity: 1; }
+    }
+
+    @media (max-width: 380px) {
+      .hero-title { font-size: 23px; }
+      .step-title { font-size: 19px; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="bg-icons">
+    <span>📈</span>
+    <span>💼</span>
+    <span>💎</span>
+    <span>🚀</span>
+  </div>
+
+  <div class="quiz-container">
+    <div class="top-bar">
+      <div class="brand">
+        <div class="brand-title">Ledolab Business Club</div>
+        <div class="brand-badge">ОТБОР</div>
+      </div>
+
+      <div id="progressWrap" class="progress-wrap">
+        <div class="progress-meta">
+          <span id="progressText">Шаг 1 / 6</span>
+          <span>Квалификация</span>
+        </div>
+        <div class="progress-bar">
+          <div id="progressFill" class="progress-fill"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="content">
+      <div id="hero" class="hero active">
+        <h1 class="hero-title">Закрытый бизнес-отбор</h1>
+        <p class="hero-subtitle">
+          Попади в окружение предпринимателей, которые уже выстраивают стабильный онлайн-доход и системный рост.
+        </p>
+
+        <div class="pain-block">
+          <h3>Мы отбираем тех, кто устал:</h3>
+          <div class="pain-list">
+            <div class="pain-item">
+              <span class="pain-icon">🎯</span>
+              <span>работать без понятной системы</span>
+            </div>
+            <div class="pain-item">
+              <span class="pain-icon">⚡️</span>
+              <span>не понимать, как привлекать клиентов</span>
+            </div>
+            <div class="pain-item">
+              <span class="pain-icon">🔄</span>
+              <span>делать всё в одиночку без поддержки</span>
+            </div>
+          </div>
+        </div>
+
+        <button class="start-btn" onclick="startQuiz()">🚀 Пройти опрос</button>
+      </div>
+
+      <div id="step1" class="step">
+        <div class="step-kicker">Шаг 1</div>
+        <h2 class="step-title">Какая ваша цель сейчас?</h2>
+        <p class="step-desc">🎯 Четкая цель — это 50% коммерческого успеха проекта.</p>
+
+        <div class="options">
+          <button class="option-btn" onclick="nextStep('goal', 'Найти первый доход онлайн', 1, 2)">
+            <div class="option-icon">🚀</div>
+            <div class="option-text"><strong>Найти первый доход онлайн</strong><span>Старт бизнес-пути</span></div>
+          </button>
+          <button class="option-btn" onclick="nextStep('goal', 'Выйти на стабильный доход', 1, 2)">
+            <div class="option-icon">🔄</div>
+            <div class="option-text"><strong>Выйти на стабильный доход</strong><span>Построение стабильной модели</span></div>
+          </button>
+          <button class="option-btn" onclick="nextStep('goal', 'Масштабировать текущий результат', 1, 2)">
+            <div class="option-icon">📈</div>
+            <div class="option-text"><strong>Масштабировать результат</strong><span>Увеличение чеков и объемов</span></div>
+          </button>
+        </div>
+      </div>
+
+      <div id="step2" class="step">
+        <div class="step-kicker">Шаг 2</div>
+        <h2 class="step-title">Ваш текущий доход в месяц?</h2>
+        <p class="step-desc">📊 Фиксируем точку А, чтобы проложить точный маршрут к росту.</p>
+
+        <div class="options">
+          <button class="option-btn" onclick="nextStep('current_income', '0–500€', 2, 3)">
+            <div class="option-icon">🌱</div>
+            <div class="option-text"><strong>0 – 500€</strong><span>Начальный уровень</span></div>
+          </button>
+          <button class="option-btn" onclick="nextStep('current_income', '500–1000€', 2, 3)">
+            <div class="option-icon">💳</div>
+            <div class="option-text"><strong>500 – 1000€</strong><span>Есть базовый результат</span></div>
+          </button>
+          <button class="option-btn" onclick="nextStep('current_income', '1000-5000€', 2, 3)">
+            <div class="option-icon">💼</div>
+            <div class="option-text"><strong>1000 – 5000€</strong><span>Уверенный доход</span></div>
+          </button>
+          <button class="option-btn" onclick="nextStep('current_income', '5000€+', 2, 3)">
+            <div class="option-icon">💰</div>
+            <div class="option-text"><strong>5000€+</strong><span>High-level уровень</span></div>
+          </button>
+        </div>
+        <div class="footer-row"><button class="back-btn" onclick="goBack(1)">← Назад</button></div>
+      </div>
+
+      <div id="step3" class="step">
+        <div class="step-kicker">Шаг 3</div>
+        <h2 class="step-title">Что больше всего тормозит результат?</h2>
+        <p class="step-desc">⚡ Найти слабое звено в системе — значит уберечь прибыль от слива.</p>
+
+        <div class="options">
+          <button class="option-btn" onclick="nextStep('main_obstacle', 'Нет системы', 3, 4)">
+            <div class="option-icon">🛠</div>
+            <div class="option-text"><strong>Нет системы</strong><span>Хаос в процессах</span></div>
+          </button>
+          <button class="option-btn" onclick="nextStep('main_obstacle', 'Нет трафика/клиентов', 3, 4)">
+            <div class="option-icon">⏳</div>
+            <div class="option-text"><strong>Нет трафика / клиентов</strong><span>Дефицит лидов</span></div>
+          </button>
+          <button class="option-btn" onclick="nextStep('main_obstacle', 'Нет дисциплины', 3, 4)">
+            <div class="option-icon">📜</div>
+            <div class="option-text"><strong>Нет дисциплины</strong><span>Проблемы с фокусом</span></div>
+          </button>
+          <button class="option-btn" onclick="nextStep('main_obstacle', 'Не понимаю, что делать', 3, 4)">
+            <div class="option-icon">🧮</div>
+            <div class="option-text"><strong>Не понимаю, что делать</strong><span>Отсутствие плана</span></div>
+          </button>
+        </div>
+        <div class="footer-row"><button class="back-btn" onclick="goBack(2)">← Назад</button></div>
+      </div>
+
+      <div id="step4" class="step">
+        <div class="step-kicker">Шаг 4</div>
+        <h2 class="step-title">Сколько времени готовы уделять ежедневно?</h2>
+        <p class="step-desc">⏰ Время — твой самый дорогой и невосполнимый бизнес-актив.</p>
+
+        <div class="options">
+          <button class="option-btn" onclick="nextStep('time_commitment', 'До 1 часа', 4, 5)">
+            <div class="option-icon">🌿</div>
+            <div class="option-text"><strong>До 1 часа</strong><span>Минимальное вовлечение</span></div>
+          </button>
+          <button class="option-btn" onclick="nextStep('time_commitment', '1–3 часа', 4, 5)">
+            <div class="option-icon">⚡</div>
+            <div class="option-text"><strong>1 – 3 часа</strong><span>Оптимальный фокус</span></div>
+          </button>
+          <button class="option-btn" onclick="nextStep('time_commitment', '3+ часа', 4, 5)">
+            <div class="option-icon">🔥</div>
+            <div class="option-text"><strong>3+ часа</strong><span>Максимальный темп</span></div>
+          </button>
+        </div>
+        <div class="footer-row"><button class="back-btn" onclick="goBack(3)">← Назад</button></div>
+      </div>
+
+      <div id="step5" class="step">
+        <div class="step-kicker">Шаг 5</div>
+        <h2 class="step-title">Готовы ежедневно ставить задачи и отчитываться?</h2>
+        <p class="step-desc">📈 Системная отчетность поднимает эффективность лидов в разы.</p>
+
+        <div class="options">
+          <button class="option-btn" onclick="nextStep('ready_to_report', 'Да', 5, 6)">
+            <div class="option-icon">🔥</div>
+            <div class="option-text"><strong>Да, на 100%</strong><span>Готов к дисциплине</span></div>
+          </button>
+          <button class="option-btn" onclick="nextStep('ready_to_report', 'Не уверен(а)', 5, 6)">
+            <div class="option-icon">🤔</div>
+            <div class="option-text"><strong>Не уверен(а)</strong><span>Есть сомнения</span></div>
+          </button>
+        </div>
+        <div class="footer-row"><button class="back-btn" onclick="goBack(4)">← Назад</button></div>
+      </div>
+
+      <div id="step6" class="step">
+        <div class="step-kicker">Шаг 6</div>
+        <h2 class="step-title">Готовы рассмотреть платное участие при наличии системы?</h2>
+        <p class="step-desc">💼 Инвестиции в сильное окружение всегда возвращаются с высоким ROI.</p>
+
+        <div class="options">
+          <button class="option-btn" onclick="finishWithOption('paid_participation', 'Да', 6)">
+            <div class="option-icon">🤝</div>
+            <div class="option-text"><strong>Да, готов инвестировать</strong><span>Настроен на результат</span></div>
+          </button>
+          <button class="option-btn" onclick="finishWithOption('paid_participation', 'Возможно', 6)">
+            <div class="option-icon">☕</div>
+            <div class="option-text"><strong>Возможно рассмотрю</strong><span>Нужно увидеть систему</span></div>
+          </button>
+          <button class="option-btn" onclick="finishWithOption('paid_participation', 'Нет', 6)">
+            <div class="option-icon">❌</div>
+            <div class="option-text"><strong>Нет, не готов</strong><span>Ищу только бесплатное</span></div>
+          </button>
+        </div>
+        <div class="footer-row"><button class="back-btn" onclick="goBack(5)">← Назад</button></div>
+      </div>
+
+      <div id="loading" class="loading">
+        ⏳ Передача анкеты в обработку шифрованного ядра...
+        <div class="dots">
+          <span></span><span></span><span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const tg = window.Telegram.WebApp;
+    if (tg) {
+      tg.expand();
+      tg.ready();
+    }
+
+    let quizResults = {
+      goal: "",
+      current_income: "",
+      main_obstacle: "",
+      time_commitment: "",
+      ready_to_report: "",
+      paid_participation: ""
+    };
+
+    let currentStep = 0;
+    const TOTAL_STEPS = 6; // Теперь шагов ровно 6
+
+    const hero = document.getElementById('hero');
+    const progressWrap = document.getElementById('progressWrap');
+    const progressFill = document.getElementById('progressFill');
+    const progressText = document.getElementById('progressText');
+    const loading = document.getElementById('loading');
+
+    function startQuiz() {
+      hero.classList.remove('active');
+      progressWrap.classList.add('visible');
+      showStep(1);
+    }
+
+    function showStep(stepNumber) {
+      currentStep = stepNumber;
+      document.querySelectorAll('.step.active').forEach(el => el.classList.remove('active'));
+
+      const target = document.getElementById('step' + stepNumber);
+      if (target) {
+        target.classList.add('active');
+      }
+
+      const percent = (stepNumber / TOTAL_STEPS) * 100;
+      progressFill.style.width = percent + '%';
+      progressText.textContent = `Шаг ${stepNumber} / ${TOTAL_STEPS}`;
+    }
+
+    function nextStep(field, value, step, next) {
+      quizResults[field] = value;
+
+      const currentStepEl = document.getElementById(`step${step}`);
+      const buttons = currentStepEl.querySelectorAll('.option-btn');
+      buttons.forEach(btn => btn.classList.remove('selected'));
+      event.currentTarget.classList.add('selected');
+
+      setTimeout(() => {
+        showStep(next);
+      }, 200);
+    }
+
+    function goBack(stepNumber) {
+      showStep(stepNumber);
+    }
+
+    // Мгновенная финализация при клике на финальный вопрос
+    function finishWithOption(field, value, step) {
+      quizResults[field] = value;
+
+      const currentStepEl = document.getElementById(`step${step}`);
+      const buttons = currentStepEl.querySelectorAll('.option-btn');
+      buttons.forEach(btn => btn.classList.remove('selected'));
+      event.currentTarget.classList.add('selected');
+
+      setTimeout(() => {
+        document.querySelectorAll('.step.active').forEach(el => el.classList.remove('active'));
+        loading.classList.add('visible');
+        progressFill.style.width = '100%';
+        progressText.textContent = 'Обработка';
+
+        setTimeout(() => {
+          if (tg) {
+            tg.sendData(JSON.stringify(quizResults));
+            tg.close();
+          } else {
+            console.log("Защищенный JSON пакет данных для ядра бота:", quizResults);
+            alert("Данные успешно упакованы! Внутри Telegram WebApp они отправятся вашему боту.");
+          }
+        }, 600);
+      }, 200);
+    }
+  </script>
+</body>
+</html>
