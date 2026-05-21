@@ -76,7 +76,7 @@ async def handle_quiz_completion(message: types.Message) -> None:
             profile_text,
         )
         await message.answer(
-            "Остання твоя дія — поділитися номером телефону.",
+            "Последнее действие — поделиться номером телефона.",
             reply_markup=contact_reply_keyboard(),
         )
         
@@ -95,10 +95,10 @@ async def handle_contact_share(message: types.Message) -> None:
     """Handle phone number sharing after quiz completion."""
     contact = message.contact
     if not contact:
-        await message.answer("Не вдалося отримати номер телефону.")
+        await message.answer("Не удалось получить номер телефона.")
         return
     if contact.user_id and contact.user_id != message.from_user.id:
-        await message.answer("Поділись, будь ласка, саме своїм номером телефону.")
+        await message.answer("Поделись, пожалуйста, именно своим номером телефона.")
         return
 
     logger.info(
@@ -112,10 +112,10 @@ async def handle_contact_share(message: types.Message) -> None:
     )
 
     await message.answer(
-        "Дякую! Номер телефону отримали. Тепер можеш перейти в меню LedoLab.",
+        "Спасибо! Номер телефона получили. Теперь можешь перейти в меню LedoLab Business Club.",
         reply_markup=types.ReplyKeyboardRemove(),
     )
     await message.answer(
-        "LedoLab\n\nОбери наступну дію:",
+        "LedoLab Business Club\n\nВыбери следующее действие:",
         reply_markup=club_main_menu(),
     )

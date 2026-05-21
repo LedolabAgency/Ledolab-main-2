@@ -17,7 +17,7 @@ async def enter_club(query: types.CallbackQuery) -> None:
     """
     try:
         await query.message.edit_text(
-            "LedoLab\n\nОбери дію:",
+            "LedoLab Business Club\n\nВыбери действие:",
             reply_markup=club_main_menu(),
         )
         await query.answer()
@@ -33,7 +33,7 @@ async def back_to_menu(query: types.CallbackQuery) -> None:
     """
     try:
         await query.message.edit_text(
-            "LedoLab",
+            "LedoLab Business Club",
             reply_markup=club_main_menu(),
         )
         await query.answer()

@@ -27,15 +27,15 @@ async def cmd_start(message: types.Message) -> None:
         
         if existing_user:
             await message.answer(
-                f"Привіт, {message.from_user.first_name}! Ти вже в LedoLab.",
+                f"Привет, {message.from_user.first_name}! Ты уже в LedoLab Business Club.",
                 reply_markup=club_main_menu(),
             )
             return
         
         # New user - show welcome
         welcome_text = (
-            "LedoLab\n\n"
-            "Пройди квіз, щоб ми відкрили тобі доступ далі."
+            "LedoLab Business Club\n\n"
+            "Пройди квиз, чтобы мы открыли тебе доступ дальше."
         )
         
         await message.answer(welcome_text, reply_markup=quiz_reply_keyboard(WEB_APP_URL))

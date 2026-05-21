@@ -11,14 +11,14 @@ def quiz_reply_keyboard(web_app_url: str) -> types.ReplyKeyboardMarkup:
         keyboard=[
             [
                 types.KeyboardButton(
-                    text="ПРОЙТИ КВІЗ",
+                    text="ПРОЙТИ КВИЗ",
                     web_app=types.WebAppInfo(url=web_app_url),
                 )
             ],
         ],
         resize_keyboard=True,
         is_persistent=True,
-        input_field_placeholder="Натисни кнопку нижче",
+        input_field_placeholder="Нажми кнопку ниже",
     )
 
 
@@ -28,14 +28,14 @@ def contact_reply_keyboard() -> types.ReplyKeyboardMarkup:
         keyboard=[
             [
                 types.KeyboardButton(
-                    text="ПОДІЛИТИСЯ НОМЕРОМ ТЕЛЕФОНУ",
+                    text="ПОДЕЛИТЬСЯ НОМЕРОМ ТЕЛЕФОНА",
                     request_contact=True,
                 )
             ],
         ],
         resize_keyboard=True,
         is_persistent=True,
-        input_field_placeholder="Поділись номером телефону",
+        input_field_placeholder="Поделись номером телефона",
     )
 
 
