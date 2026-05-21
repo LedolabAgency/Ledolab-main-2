@@ -6,6 +6,7 @@ import logging
 import json
 from aiogram import Router, types, F
 from app import database
+from app.keyboards.inline.start import contact_reply_keyboard, club_main_menu
 from app.services import quiz_service
 
 logger = logging.getLogger(__name__)
@@ -70,19 +71,13 @@ async def handle_quiz_completion(message: types.Message) -> None:
         # Delete progress message
         await progress_msg.delete()
         
-        # Send profile and invite to club
+        # Ask for the final action after quiz completion
         await message.answer(
             profile_text,
-            reply_markup=types.InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        types.InlineKeyboardButton(
-                            text="Enter Club",
-                            callback_data="club_enter",
-                        )
-                    ],
-                ]
-            ),
+        )
+        await message.answer(
+            "Остання твоя дія — поділитися номером телефону.",
+            reply_markup=contact_reply_keyboard(),
         )
         
         logger.info(f"Quiz completed: {user_id}")
@@ -93,3 +88,30 @@ async def handle_quiz_completion(message: types.Message) -> None:
     except Exception as e:
         logger.error(f"Error in quiz handler: {e}", exc_info=True)
         await message.answer("Critical error. Try later.")
+
+
+@router.message(F.contact)
+async def handle_contact_share(message: types.Message) -> None:
+    """Handle phone number sharing after quiz completion."""
+    contact = message.contact
+    if not contact:
+        await message.answer("Не вдалося отримати номер телефону.")
+        return
+    if contact.user_id and contact.user_id != message.from_user.id:
+        await message.answer("Поділись, будь ласка, саме своїм номером телефону.")
+        return
+
+    logger.info(
+        "Contact shared by user %s: %s",
+        message.from_user.id,
+        contact.phone_number,
+    )
+
+    await message.answer(
+        "Дякую! Номер телефону отримали. Тепер можеш перейти в меню LedoLab.",
+        reply_markup=types.ReplyKeyboardRemove(),
+    )
+    await message.answer(
+        "LedoLab\n\nОбери наступну дію:",
+        reply_markup=club_main_menu(),
+    )

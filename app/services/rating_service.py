@@ -39,10 +39,10 @@ async def format_rating_text(users: List[Dict[str, Any]]) -> str:
         Formatted rating text
     """
     if not users:
-        return "🏆 ТОП предпринимателей Leda.lab\n\nПока нет участников в рейтинге."
+        return "🏆 ТОП підприємців LedoLab\n\nПоки що в рейтингу немає учасників."
     
     medals = ["🥇", "🥈", "🥉"]
-    lines = ["🏆 ТОП предпринимателей Leda.lab\n"]
+    lines = ["🏆 ТОП підприємців LedoLab\n"]
     
     for idx, user in enumerate(users[:10], 1):
         medal = medals[idx - 1] if idx <= 3 else f"{idx}."

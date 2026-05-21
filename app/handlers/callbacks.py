@@ -13,11 +13,11 @@ router = Router()
 @router.callback_query(F.data == "club_enter")
 async def enter_club(query: types.CallbackQuery) -> None:
     """
-    Enter Business To-Do Club main menu.
+    Enter LedoLab main menu.
     """
     try:
         await query.message.edit_text(
-            "Business To-Do Club\n\nSelect action:",
+            "LedoLab\n\nОбери дію:",
             reply_markup=club_main_menu(),
         )
         await query.answer()
@@ -33,7 +33,7 @@ async def back_to_menu(query: types.CallbackQuery) -> None:
     """
     try:
         await query.message.edit_text(
-            "Business To-Do Club",
+            "LedoLab",
             reply_markup=club_main_menu(),
         )
         await query.answer()

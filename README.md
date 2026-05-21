@@ -1,10 +1,10 @@
-# 🎯 Ledolab Business Club
+# 🎯 LedoLab
 
 **Закрытая система для предпринимателей** с квиз-диагностикой, постановкой дневных задач, отчетностью и рейтингом.
 
 ## 🚀 Что это?
 
-Telegram бот для Business To-Do Club:
+Telegram бот для LedoLab:
 - 📋 Квиз-диагностика (6 вопросов на WebApp)
 - 🎯 Постановка одной задачи в день
 - ✅ Сдача отчета вечером
@@ -257,4 +257,4 @@ LOG_LEVEL=DEBUG python -m app.main
 
 ---
 
-**Made with 🔥 by Leda.lab Agency**
+**Made with 🔥 by LedoLab Agency**

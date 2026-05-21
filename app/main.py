@@ -1,11 +1,10 @@
 """
-Main bot entry point for Leda.lab Business Club.
+Main bot entry point for LedoLab.
 Initializes and runs the Telegram bot.
 """
 
 import asyncio
 import logging
-import os
 
 try:
     import sentry_sdk
@@ -41,11 +40,8 @@ async def on_startup(bot: Bot) -> None:
         database.init_supabase()
         logger.info("✅ Supabase initialized")
         
-        # Initialize Redis
-        await cache.init_redis()
         logger.info("✅ Redis initialized")
-        
-        # Set webhook or polling mode
+
         me = await bot.get_me()
         logger.info(f"✅ Bot @{me.username} is ready")
         
@@ -103,7 +99,6 @@ async def main() -> None:
     
     # Start polling
     try:
-        await on_startup(bot)
         logger.info("⏳ Polling started...")
         await dp.start_polling(
             bot,
@@ -111,8 +106,6 @@ async def main() -> None:
         )
     except KeyboardInterrupt:
         logger.info("⏸️ Polling stopped")
-    finally:
-        await on_shutdown(bot)
 
 
 if __name__ == "__main__":

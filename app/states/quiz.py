@@ -1,5 +1,5 @@
 """
-FSM states for Leda.lab Business Club.
+FSM states for LedoLab.
 Defines state machines for quiz, goals, tasks, and reports.
 """
 

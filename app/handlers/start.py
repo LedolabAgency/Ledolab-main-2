@@ -6,7 +6,7 @@ import logging
 from aiogram import Router, types
 from aiogram.filters import CommandStart
 from app.config import WEB_APP_URL
-from app.keyboards.inline.start import start_keyboard
+from app.keyboards.inline.start import quiz_reply_keyboard, club_main_menu
 from app import database
 
 logger = logging.getLogger(__name__)
@@ -27,22 +27,18 @@ async def cmd_start(message: types.Message) -> None:
         
         if existing_user:
             await message.answer(
-                f"Привет, {message.from_user.first_name}! Ты уже в клубе.",
-                reply_markup=types.InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [types.InlineKeyboardButton(text="Menu", callback_data="club_enter")]
-                    ]
-                ),
+                f"Привіт, {message.from_user.first_name}! Ти вже в LedoLab.",
+                reply_markup=club_main_menu(),
             )
             return
         
         # New user - show welcome
         welcome_text = (
-            "Leda.lab Business Club\n\n"
-            "Пройди диагностику."
+            "LedoLab\n\n"
+            "Пройди квіз, щоб ми відкрили тобі доступ далі."
         )
         
-        await message.answer(welcome_text, reply_markup=start_keyboard(WEB_APP_URL))
+        await message.answer(welcome_text, reply_markup=quiz_reply_keyboard(WEB_APP_URL))
         logger.info(f"New user: {user_id}")
         
     except Exception as e:

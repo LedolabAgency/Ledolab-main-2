@@ -1,33 +1,47 @@
 """
-Inline keyboards for Leda.lab Business Club.
-Premium UI with InlineKeyboardMarkup only.
+Bot keyboards for LedoLab.
 """
 
 from aiogram import types
 
 
-def start_keyboard(web_app_url: str) -> types.InlineKeyboardMarkup:
-    """
-    Main start screen with quiz button.
-    
-    ◈ Leda.lab Business Club
-    Закрытая среда для предпринимателей...
-    """
-    return types.InlineKeyboardMarkup(
-        inline_keyboard=[
+def quiz_reply_keyboard(web_app_url: str) -> types.ReplyKeyboardMarkup:
+    """Persistent reply keyboard with the quiz entry point."""
+    return types.ReplyKeyboardMarkup(
+        keyboard=[
             [
-                types.InlineKeyboardButton(
-                    text="◈ Начать диагностику",
+                types.KeyboardButton(
+                    text="ПРОЙТИ КВІЗ",
                     web_app=types.WebAppInfo(url=web_app_url),
                 )
-            ]
-        ]
+            ],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+        input_field_placeholder="Натисни кнопку нижче",
+    )
+
+
+def contact_reply_keyboard() -> types.ReplyKeyboardMarkup:
+    """Reply keyboard that requests the user's phone number."""
+    return types.ReplyKeyboardMarkup(
+        keyboard=[
+            [
+                types.KeyboardButton(
+                    text="ПОДІЛИТИСЯ НОМЕРОМ ТЕЛЕФОНУ",
+                    request_contact=True,
+                )
+            ],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+        input_field_placeholder="Поділись номером телефону",
     )
 
 
 def club_main_menu() -> types.InlineKeyboardMarkup:
     """
-    Main Business To-Do Club menu.
+    Main LedoLab menu.
     
     🎯 Поставить задачу
     ✅ Сдать отчет

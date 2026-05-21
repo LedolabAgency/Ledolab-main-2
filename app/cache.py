@@ -1,5 +1,5 @@
 """
-Cache and Redis utilities for Leda.lab Business Club.
+Cache and Redis utilities for LedoLab.
 Handles FSM storage, distributed locks, and caching.
 """
 
@@ -22,6 +22,8 @@ async def init_redis() -> redis.Redis:
         redis.Redis: Async Redis client
     """
     global redis_client
+    if redis_client:
+        return redis_client
     try:
         redis_client = await redis.from_url(REDIS_URL, decode_responses=True)
         await redis_client.ping()
