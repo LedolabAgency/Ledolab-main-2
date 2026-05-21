@@ -48,14 +48,14 @@ async def handle_quiz_completion(message: types.Message) -> None:
             return
         
         # Save quiz answers
-        await database.save_quiz_answers(user["id"], quiz_data)
+        await database.save_quiz_answers(user_id, quiz_data)
         
         # Calculate business profile
         profile = quiz_service.calculate_business_profile(quiz_data)
         
         # Update user profile
         await database.update_user_profile(
-            user_id=user["id"],
+            user_id=user_id,
             business_level=profile["business_level"],
             focus_zone=profile["focus_zone"],
             discipline_potential=profile["discipline_potential"],

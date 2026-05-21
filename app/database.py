@@ -45,7 +45,7 @@ async def create_user(
     language_code: str = "ru",
 ) -> Dict[str, Any]:
     """
-    Ensure a quiz_data row exists for the Telegram user.
+    Return lightweight onboarding user data without inserting into DB.
     
     Args:
         telegram_id: Telegram user ID
@@ -61,19 +61,13 @@ async def create_user(
         if existing_user:
             return existing_user
 
-        sb = get_supabase()
-        result = (
-            sb.table("quiz_data")
-            .insert({
-                "user_tg": str(telegram_id),
-            })
-            .execute()
-        )
-
-        if result.data:
-            logger.info(f"✅ User created in quiz_data: {telegram_id}")
-            return result.data[0]
-        return {"user_tg": str(telegram_id)}
+        logger.info("✅ Prepared onboarding user payload: %s", telegram_id)
+        return {
+            "user_tg": str(telegram_id),
+            "username": username,
+            "first_name": first_name,
+            "language_code": language_code,
+        }
     except Exception as e:
         logger.error(f"Error creating user {telegram_id}: {e}", exc_info=True)
         return {}
