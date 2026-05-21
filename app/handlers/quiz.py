@@ -106,6 +106,10 @@ async def handle_contact_share(message: types.Message) -> None:
         message.from_user.id,
         contact.phone_number,
     )
+    await database.save_phone_number(
+        telegram_id=message.from_user.id,
+        phone_number=contact.phone_number,
+    )
 
     await message.answer(
         "Дякую! Номер телефону отримали. Тепер можеш перейти в меню LedoLab.",

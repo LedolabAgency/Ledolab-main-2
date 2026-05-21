@@ -45,7 +45,7 @@ async def create_user(
     language_code: str = "ru",
 ) -> Dict[str, Any]:
     """
-    Create a new user.
+    Ensure a quiz_data row exists for the Telegram user.
     
     Args:
         telegram_id: Telegram user ID
@@ -57,19 +57,23 @@ async def create_user(
         User data dict
     """
     try:
+        existing_user = await get_user(telegram_id)
+        if existing_user:
+            return existing_user
+
         sb = get_supabase()
-        result = sb.table("users").insert({
-            "telegram_id": telegram_id,
-            "username": username,
-            "first_name": first_name,
-            "language_code": language_code,
-            "is_active": True,
-        }).execute()
-        
+        result = (
+            sb.table("quiz_data")
+            .insert({
+                "user_tg": str(telegram_id),
+            })
+            .execute()
+        )
+
         if result.data:
-            logger.info(f"✅ User created: {telegram_id}")
+            logger.info(f"✅ User created in quiz_data: {telegram_id}")
             return result.data[0]
-        return {}
+        return {"user_tg": str(telegram_id)}
     except Exception as e:
         logger.error(f"Error creating user {telegram_id}: {e}", exc_info=True)
         return {}
@@ -77,7 +81,7 @@ async def create_user(
 
 async def get_user(telegram_id: int) -> Optional[Dict[str, Any]]:
     """
-    Get user by Telegram ID.
+    Get user by Telegram ID from quiz_data.
     
     Args:
         telegram_id: Telegram user ID
@@ -87,8 +91,15 @@ async def get_user(telegram_id: int) -> Optional[Dict[str, Any]]:
     """
     try:
         sb = get_supabase()
-        result = sb.table("users").select("*").eq("telegram_id", telegram_id).execute()
-        
+        result = (
+            sb.table("quiz_data")
+            .select("*")
+            .eq("user_tg", str(telegram_id))
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+
         if result.data:
             return result.data[0]
         return None
@@ -104,7 +115,7 @@ async def update_user_profile(
     discipline_potential: str,
 ) -> bool:
     """
-    Update user business profile after quiz completion.
+    Compatibility no-op for the simplified quiz_data schema.
     
     Args:
         user_id: User database ID
@@ -116,14 +127,13 @@ async def update_user_profile(
         True if successful
     """
     try:
-        sb = get_supabase()
-        sb.table("users").update({
-            "business_level": business_level,
-            "focus_zone": focus_zone,
-            "discipline_potential": discipline_potential,
-        }).eq("id", user_id).execute()
-        
-        logger.info(f"✅ User profile updated: {user_id}")
+        logger.info(
+            "Profile calculated for user %s: level=%s focus=%s discipline=%s",
+            user_id,
+            business_level,
+            focus_zone,
+            discipline_potential,
+        )
         return True
     except Exception as e:
         logger.error(f"Error updating user profile {user_id}: {e}", exc_info=True)
@@ -132,7 +142,7 @@ async def update_user_profile(
 
 async def save_quiz_answers(user_id: int, quiz_data: Dict[str, str]) -> bool:
     """
-    Save quiz answers to database.
+    Save quiz answers to quiz_data.
     
     Args:
         user_id: User database ID
@@ -143,18 +153,49 @@ async def save_quiz_answers(user_id: int, quiz_data: Dict[str, str]) -> bool:
     """
     try:
         sb = get_supabase()
-        
-        for question_key, answer_value in quiz_data.items():
-            sb.table("quiz_answers").insert({
-                "user_id": user_id,
-                "question_key": question_key,
-                "answer_key": answer_value,
+        result = (
+            sb.table("quiz_data")
+            .update(quiz_data)
+            .eq("user_tg", str(user_id))
+            .execute()
+        )
+
+        if not result.data:
+            sb.table("quiz_data").insert({
+                "user_tg": str(user_id),
+                **quiz_data,
             }).execute()
-        
-        logger.info(f"✅ Quiz answers saved: {user_id}")
+
+        logger.info(f"✅ Quiz answers saved in quiz_data: {user_id}")
         return True
     except Exception as e:
         logger.error(f"Error saving quiz answers {user_id}: {e}", exc_info=True)
+        return False
+
+
+async def save_phone_number(telegram_id: int, phone_number: str) -> bool:
+    """Save the user's phone number into quiz_data."""
+    try:
+        sb = get_supabase()
+        result = (
+            sb.table("quiz_data")
+            .update({
+                "phone_number": phone_number,
+            })
+            .eq("user_tg", str(telegram_id))
+            .execute()
+        )
+
+        if not result.data:
+            sb.table("quiz_data").insert({
+                "user_tg": str(telegram_id),
+                "phone_number": phone_number,
+            }).execute()
+
+        logger.info("✅ Phone number saved for %s", telegram_id)
+        return True
+    except Exception as e:
+        logger.error(f"Error saving phone number {telegram_id}: {e}", exc_info=True)
         return False
 
 
