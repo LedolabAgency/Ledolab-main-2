@@ -1,0 +1,7 @@
+aiogram==3.0.0b8
+redis>=4.5.0
+supabase>=1.0.0
+python-dotenv>=1.0.0
+
+# opcional
+sentry-sdk>=1.0.0
