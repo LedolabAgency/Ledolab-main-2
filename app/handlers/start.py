@@ -3,7 +3,7 @@ Start handler - initial bot greeting and quiz link.
 """
 
 import logging
-from aiogram import Router, types
+from aiogram import Router, types, F
 from aiogram.filters import CommandStart, Command, CommandObject
 from aiogram.fsm.context import FSMContext
 from app.config import WEB_APP_URL, CLUB_GROUP_URL, GOAL_SCORE
