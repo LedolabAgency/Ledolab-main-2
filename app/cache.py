@@ -4,6 +4,7 @@ Handles FSM storage, distributed locks, and caching.
 """
 
 import logging
+from datetime import datetime, timedelta
 from typing import Any, Optional
 import redis.asyncio as redis
 from app.config import REDIS_URL
@@ -158,3 +159,16 @@ class KeyManager:
     def get_score_key(user_id: int) -> str:
         """User total Leda Score key."""
         return f"score:{user_id}"
+
+    @staticmethod
+    def get_day_plan_lock_key(user_id: int, date: str) -> str:
+        """Day plan lock key until midnight."""
+        return f"day_plan_lock:{user_id}:{date}"
+
+
+def seconds_until_midnight() -> int:
+    """Return seconds until the next local midnight."""
+    now = datetime.now()
+    tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    ttl = int((tomorrow - now).total_seconds())
+    return max(ttl, 60)

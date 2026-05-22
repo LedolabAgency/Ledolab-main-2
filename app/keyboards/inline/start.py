@@ -128,23 +128,41 @@ def goal_edit_days_keyboard() -> types.InlineKeyboardMarkup:
 
 
 def club_main_menu(bot_username: str | None = None) -> types.InlineKeyboardMarkup:
-    """Main working menu for the group chat."""
+    """Main working menu. In groups all buttons open the private bot."""
     goal_button: types.InlineKeyboardButton
+    day_button: types.InlineKeyboardButton
+    report_button: types.InlineKeyboardButton
+    rating_button: types.InlineKeyboardButton
+    rules_button: types.InlineKeyboardButton
     if bot_username:
         goal_button = types.InlineKeyboardButton(
             text="🎯 Моя цель (30 дней)",
             url=f"https://t.me/{bot_username}?start=goal_setup",
         )
+        day_button = types.InlineKeyboardButton(
+            text="📅 Мой день (до 3х задач)",
+            url=f"https://t.me/{bot_username}?start=day_setup",
+        )
+        report_button = types.InlineKeyboardButton(
+            text="📤 Сдать отчет",
+            url=f"https://t.me/{bot_username}?start=report_setup",
+        )
+        rating_button = types.InlineKeyboardButton(text="🏆 Рейтинг", callback_data="rating_view")
+        rules_button = types.InlineKeyboardButton(text="📘 Как работает клуб", callback_data="rules_view")
     else:
         goal_button = types.InlineKeyboardButton(text="🎯 Моя цель (30 дней)", callback_data="goal_view")
+        day_button = types.InlineKeyboardButton(text="📅 Мой день (до 3х задач)", callback_data="day_view")
+        report_button = types.InlineKeyboardButton(text="📤 Сдать отчет", callback_data="report_submit")
+        rating_button = types.InlineKeyboardButton(text="🏆 Рейтинг", callback_data="rating_view")
+        rules_button = types.InlineKeyboardButton(text="📘 Как работает клуб", callback_data="rules_view")
 
     return types.InlineKeyboardMarkup(
         inline_keyboard=[
             [goal_button],
-            [types.InlineKeyboardButton(text="📅 Мой день (3 задачи)", callback_data="day_view")],
-            [types.InlineKeyboardButton(text="📤 Сдать отчет", callback_data="report_submit")],
-            [types.InlineKeyboardButton(text="🏆 Рейтинг", callback_data="rating_view")],
-            [types.InlineKeyboardButton(text="📘 Как работает клуб", callback_data="rules_view")],
+            [day_button],
+            [report_button],
+            [rating_button],
+            [rules_button],
         ]
     )
 
