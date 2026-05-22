@@ -4,12 +4,13 @@ Start handler - initial bot greeting and quiz link.
 
 import logging
 from aiogram import Router, types
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, Command
 from app.config import WEB_APP_URL, CLUB_GROUP_URL
 from app.keyboards.inline.start import (
     quiz_reply_keyboard,
     club_group_keyboard,
     open_bot_private_keyboard,
+    club_main_menu,
 )
 from app import database
 
@@ -57,4 +58,27 @@ async def cmd_start(message: types.Message) -> None:
         
     except Exception as e:
         logger.error(f"Error: {e}", exc_info=True)
+        await message.answer("Error. Try later.")
+
+
+@router.message(Command("menu"))
+async def cmd_menu(message: types.Message) -> None:
+    """
+    /menu command handler.
+    Shows working inline buttons in the group only.
+    """
+    try:
+        if message.chat.type == "private":
+            await message.answer(
+                "Рабочие кнопки доступны только в группе LedoLab Business Club.",
+                reply_markup=club_group_keyboard(CLUB_GROUP_URL),
+            )
+            return
+
+        await message.answer(
+            "LedoLab Business Club\n\nРабочее меню:",
+            reply_markup=club_main_menu(),
+        )
+    except Exception as e:
+        logger.error(f"Error in /menu: {e}", exc_info=True)
         await message.answer("Error. Try later.")

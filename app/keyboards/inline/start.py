@@ -65,6 +65,20 @@ def open_bot_private_keyboard(bot_username: str) -> types.InlineKeyboardMarkup:
     )
 
 
+def club_main_menu() -> types.InlineKeyboardMarkup:
+    """Main working menu for the group chat."""
+    return types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [types.InlineKeyboardButton(text="🎯 Поставить задачу", callback_data="task_set")],
+            [types.InlineKeyboardButton(text="✅ Сдать отчет", callback_data="report_submit")],
+            [types.InlineKeyboardButton(text="🚀 Моя цель", callback_data="goal_view")],
+            [types.InlineKeyboardButton(text="🏆 Рейтинг", callback_data="rating_view")],
+            [types.InlineKeyboardButton(text="💤 День без фокуса", callback_data="day_skip")],
+            [types.InlineKeyboardButton(text="❌ Слил день", callback_data="day_fail")],
+        ]
+    )
+
+
 def confirm_task() -> types.InlineKeyboardMarkup:
     """Confirm task setting."""
     return types.InlineKeyboardMarkup(
