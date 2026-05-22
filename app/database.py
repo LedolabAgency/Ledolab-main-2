@@ -102,6 +102,75 @@ async def get_user(telegram_id: int) -> Optional[Dict[str, Any]]:
         return None
 
 
+async def get_club_user(telegram_id: int) -> Optional[Dict[str, Any]]:
+    """Get a club user record from the main users table."""
+    try:
+        sb = get_supabase()
+        result = (
+            sb.table("users")
+            .select("*")
+            .eq("telegram_id", telegram_id)
+            .limit(1)
+            .execute()
+        )
+        if result.data:
+            return result.data[0]
+        return None
+    except Exception as e:
+        logger.error(f"Error getting club user {telegram_id}: {e}", exc_info=True)
+        return None
+
+
+async def ensure_club_user(
+    telegram_id: int,
+    username: Optional[str],
+    first_name: Optional[str],
+    language_code: str = "ru",
+    phone_number: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Ensure the main users table contains the participant."""
+    try:
+        existing = await get_club_user(telegram_id)
+        if existing:
+            update_payload: Dict[str, Any] = {}
+            if phone_number and not existing.get("phone_number"):
+                update_payload["phone_number"] = phone_number
+            if username and not existing.get("username"):
+                update_payload["username"] = username
+            if first_name and not existing.get("first_name"):
+                update_payload["first_name"] = first_name
+            if update_payload:
+                sb = get_supabase()
+                result = (
+                    sb.table("users")
+                    .update(update_payload)
+                    .eq("telegram_id", telegram_id)
+                    .execute()
+                )
+                if result.data:
+                    return result.data[0]
+            return existing
+
+        quiz_profile = await get_user(telegram_id)
+        sb = get_supabase()
+        payload = {
+            "telegram_id": telegram_id,
+            "username": username or (quiz_profile or {}).get("username"),
+            "first_name": first_name or (quiz_profile or {}).get("first_name"),
+            "phone_number": phone_number or (quiz_profile or {}).get("phone_number"),
+            "language_code": language_code,
+            "business_level": (quiz_profile or {}).get("current_income"),
+        }
+        result = sb.table("users").insert(payload).execute()
+        if result.data:
+            logger.info("✅ Club user ensured: %s", telegram_id)
+            return result.data[0]
+        return None
+    except Exception as e:
+        logger.error(f"Error ensuring club user {telegram_id}: {e}", exc_info=True)
+        return None
+
+
 async def update_user_profile(
     user_id: int,
     business_level: str,
@@ -216,6 +285,13 @@ async def save_onboarding_submission(
         if not result.data:
             sb.table("quiz_data").insert(payload).execute()
 
+        await ensure_club_user(
+            telegram_id=telegram_id,
+            username=None,
+            first_name=None,
+            phone_number=phone_number,
+        )
+
         logger.info("✅ Full onboarding submission saved for %s", telegram_id)
         return True
     except Exception as e:
@@ -257,6 +333,21 @@ async def create_goal(
         return None
 
 
+async def set_active_goal(
+    user_id: str,
+    goal_text: str,
+    milestones: List[str],
+) -> Optional[Dict[str, Any]]:
+    """Archive previous goals and create a new active one."""
+    try:
+        sb = get_supabase()
+        sb.table("goals").update({"status": "archived"}).eq("user_id", user_id).eq("status", "active").execute()
+        return await create_goal(user_id, goal_text, milestones)
+    except Exception as e:
+        logger.error(f"Error setting active goal {user_id}: {e}", exc_info=True)
+        return None
+
+
 async def get_active_goal(user_id: int) -> Optional[Dict[str, Any]]:
     """Get active goal for user."""
     try:
@@ -281,6 +372,8 @@ async def create_task(
     user_id: int,
     task_text: str,
     task_date: str,
+    task_type: str = "main",
+    goal_id: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """
     Create a daily task.
@@ -295,12 +388,34 @@ async def create_task(
     """
     try:
         sb = get_supabase()
-        result = sb.table("daily_tasks").insert({
+        existing = (
+            sb.table("daily_tasks")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("date", task_date)
+            .eq("task_type", task_type)
+            .limit(1)
+            .execute()
+        )
+
+        payload = {
             "user_id": user_id,
+            "goal_id": goal_id,
             "task_text": task_text,
+            "task_type": task_type,
             "date": task_date,
             "status": "waiting_report",
-        }).execute()
+        }
+
+        if existing.data:
+            result = (
+                sb.table("daily_tasks")
+                .update(payload)
+                .eq("id", existing.data[0]["id"])
+                .execute()
+            )
+        else:
+            result = sb.table("daily_tasks").insert(payload).execute()
         
         if result.data:
             logger.info(f"✅ Task created: {user_id} on {task_date}")
@@ -320,6 +435,7 @@ async def get_today_task(user_id: int, today: str) -> Optional[Dict[str, Any]]:
             .select("*")
             .eq("user_id", user_id)
             .eq("date", today)
+            .order("created_at", desc=False)
             .execute()
         )
         
@@ -329,6 +445,38 @@ async def get_today_task(user_id: int, today: str) -> Optional[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error getting task {user_id}: {e}", exc_info=True)
         return None
+
+
+async def get_task_by_type(user_id: str, today: str, task_type: str = "main") -> Optional[Dict[str, Any]]:
+    """Get today's task by task type."""
+    try:
+        sb = get_supabase()
+        result = (
+            sb.table("daily_tasks")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("date", today)
+            .eq("task_type", task_type)
+            .limit(1)
+            .execute()
+        )
+        if result.data:
+            return result.data[0]
+        return None
+    except Exception as e:
+        logger.error(f"Error getting task by type {user_id}: {e}", exc_info=True)
+        return None
+
+
+async def update_task_status(task_id: str, status: str) -> bool:
+    """Update the task status."""
+    try:
+        sb = get_supabase()
+        sb.table("daily_tasks").update({"status": status}).eq("id", task_id).execute()
+        return True
+    except Exception as e:
+        logger.error(f"Error updating task status {task_id}: {e}", exc_info=True)
+        return False
 
 
 async def create_report(
@@ -363,6 +511,7 @@ async def create_report(
         
         if result.data:
             logger.info(f"✅ Report created: {user_id}")
+            await update_task_status(task_id, "reported")
             return result.data[0]
         return None
     except Exception as e:
@@ -452,3 +601,30 @@ async def get_top_users(limit: int = 10) -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error getting top users: {e}", exc_info=True)
         return []
+
+
+async def mark_daily_status(user_id: str, status_date: str, status: str) -> bool:
+    """Persist a neutral or failed day marker."""
+    try:
+        sb = get_supabase()
+        existing = (
+            sb.table("daily_statuses")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("status_date", status_date)
+            .limit(1)
+            .execute()
+        )
+        payload = {
+            "user_id": user_id,
+            "status_date": status_date,
+            "status": status,
+        }
+        if existing.data:
+            sb.table("daily_statuses").update(payload).eq("id", existing.data[0]["id"]).execute()
+        else:
+            sb.table("daily_statuses").insert(payload).execute()
+        return True
+    except Exception as e:
+        logger.error(f"Error marking daily status for {user_id}: {e}", exc_info=True)
+        return False

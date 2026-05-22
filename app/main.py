@@ -18,7 +18,7 @@ from aiogram.fsm.storage.redis import RedisStorage, DefaultKeyBuilder
 from app.config import BOT_TOKEN, SENTRY_DSN
 from app.logging_config import logger
 from app import database, cache
-from app.handlers import start_router, quiz_router, callbacks_router
+from app.handlers import start_router, quiz_router, callbacks_router, club_router
 
 # Initialize Sentry if configured
 if SENTRY_DSN and sentry_sdk:
@@ -92,6 +92,7 @@ async def main() -> None:
     dp.include_router(start_router)
     dp.include_router(quiz_router)
     dp.include_router(callbacks_router)
+    dp.include_router(club_router)
     
     # Register lifecycle hooks
     dp.startup.register(on_startup)

@@ -47,4 +47,4 @@ async def format_score_display(score: int) -> str:
     else:
         indicator = "⚡"
     
-    return f"{indicator} {score} Leda Score"
+    return f"{indicator} {score} Business Score"

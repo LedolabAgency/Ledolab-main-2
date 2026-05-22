@@ -11,9 +11,11 @@ logger = logging.getLogger(__name__)
 
 
 async def set_daily_task(
-    user_id: int,
+    user_id: str,
     task_text: str,
     today: str,
+    task_type: str = "main",
+    goal_id: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """
     Set a daily task for the user.
@@ -27,7 +29,7 @@ async def set_daily_task(
         Task data or None
     """
     try:
-        task = await database.create_task(user_id, task_text, today)
+        task = await database.create_task(user_id, task_text, today, task_type=task_type, goal_id=goal_id)
         
         if task:
             # Cache task for quick access

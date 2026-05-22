@@ -64,7 +64,7 @@ ledolab/
 - `BOT_TOKEN` — токен бота от @BotFather
 - `REDIS_URL` — Redis connection (вида `redis://:password@host:port`)
 - `SUPABASE_URL` — URL проекта Supabase
-- `SUPABASE_KEY` — Anon Key от Supabase
+- `SUPABASE_KEY` — `service_role` key от Supabase для серверной записи
 
 **Опциональные:**
 - `REPORTS_GROUP_ID` — ID группы для публикации отчетов (по умолчанию: 0)
@@ -73,6 +73,7 @@ ledolab/
 - `CLUB_GROUP_URL` — ссылка-приглашение в группу, где доступны все рабочие кнопки
 - `LOG_LEVEL` — DEBUG/INFO/WARNING (по умолчанию: INFO)
 - `SENTRY_DSN` — Для мониторинга ошибок
+- `TASK_SCORE_MAIN`, `TASK_SCORE_EXTRA`, `REPORT_SCORE`, `VIDEO_PROOF_SCORE`, `GOAL_SCORE`, `FAIL_DAY_SCORE` — настройка бизнес-скора
 
 Полный список см. в `.env.example`
 
@@ -112,8 +113,9 @@ railway variables set BOT_TOKEN=your_token_here
 # 3. Add other variables
 railway variables set REDIS_URL=redis://:password@host:port
 railway variables set SUPABASE_URL=https://your-project.supabase.co
-railway variables set SUPABASE_KEY=your-anon-key
+railway variables set SUPABASE_KEY=your-service-role-key
 railway variables set REPORTS_GROUP_ID=your_group_id
+railway variables set CLUB_GROUP_URL=https://t.me/your_group_or_invite
 
 # 4. Deploy
 railway up
@@ -131,62 +133,26 @@ railway variables set WEBHOOK_URL=https://your-railway-domain/webhook
 
 ## 🗄️ Supabase схема
 
-Необходимые таблицы:
+Для текущего бизнес-сценария LedoLab Business To-Do Club нужно применить SQL из файла:
+
+```bash
+supabase/schema.sql
+```
+
+В нем уже лежат таблицы:
+- `users`
+- `goals`
+- `daily_tasks`
+- `reports`
+- `scores`
+- `daily_statuses`
+
+Если в проекте уже есть старая `quiz_data`, оставляй ее для onboarding. Новая рабочая логика клуба использует отдельные таблицы.
 
 ```sql
--- Пользователи
-CREATE TABLE users (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  telegram_id BIGINT UNIQUE NOT NULL,
-  username TEXT,
-  first_name TEXT,
-  language_code TEXT DEFAULT 'ru',
-  business_level TEXT,
-  focus_zone TEXT,
-  discipline_potential TEXT,
-  is_active BOOLEAN DEFAULT true,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
--- Ответы квиза
-CREATE TABLE quiz_answers (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  question_key TEXT NOT NULL,
-  answer_key TEXT NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
--- Дневные задачи
-CREATE TABLE daily_tasks (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  task_text TEXT NOT NULL,
-  date DATE NOT NULL,
-  status TEXT DEFAULT 'waiting_report',
-  created_at TIMESTAMP DEFAULT NOW(),
-  UNIQUE(user_id, date)
-);
-
--- Отчеты
-CREATE TABLE reports (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  task_id UUID NOT NULL REFERENCES daily_tasks(id) ON DELETE CASCADE,
-  report_text TEXT NOT NULL,
-  proof_type TEXT,
-  file_id TEXT,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
--- Leda Score
-CREATE TABLE scores (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  points INTEGER NOT NULL,
-  reason TEXT,
-  created_at TIMESTAMP DEFAULT NOW()
-);
+-- Открой SQL Editor в Supabase
+-- Вставь содержимое supabase/schema.sql
+-- Выполни запрос целиком
 ```
 
 ---

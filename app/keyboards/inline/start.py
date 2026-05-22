@@ -70,11 +70,13 @@ def club_main_menu() -> types.InlineKeyboardMarkup:
     return types.InlineKeyboardMarkup(
         inline_keyboard=[
             [types.InlineKeyboardButton(text="🎯 Поставить задачу", callback_data="task_set")],
+            [types.InlineKeyboardButton(text="⚡ Доп. задача", callback_data="task_set_extra")],
+            [types.InlineKeyboardButton(text="🚀 Главная цель", callback_data="goal_view")],
             [types.InlineKeyboardButton(text="✅ Сдать отчет", callback_data="report_submit")],
-            [types.InlineKeyboardButton(text="🚀 Моя цель", callback_data="goal_view")],
             [types.InlineKeyboardButton(text="🏆 Рейтинг", callback_data="rating_view")],
             [types.InlineKeyboardButton(text="💤 День без фокуса", callback_data="day_skip")],
             [types.InlineKeyboardButton(text="❌ Слил день", callback_data="day_fail")],
+            [types.InlineKeyboardButton(text="📘 Как работает клуб", callback_data="rules_view")],
         ]
     )
 

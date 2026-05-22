@@ -11,8 +11,8 @@ logger = logging.getLogger(__name__)
 
 
 async def submit_report(
-    user_id: int,
-    task_id: int,
+    user_id: str,
+    task_id: str,
     report_text: str,
     proof_type: Optional[str] = None,
     file_id: Optional[str] = None,
@@ -44,11 +44,11 @@ async def submit_report(
             return None
         
         # Calculate and award score
-        total_score = config.LEDA_SCORE_REPORT
+        total_score = config.REPORT_SCORE
         
         # Bonus for video proof
         if proof_type == "video":
-            total_score += config.LEDA_SCORE_VIDEO_PROOF
+            total_score += config.VIDEO_PROOF_SCORE
             reason = "Report submitted with video proof"
         else:
             reason = "Daily report submitted"
@@ -94,6 +94,6 @@ async def report_summary_text(
         f"{task_text}\n\n"
         f"✅ Результат:\n"
         f"{report_text}\n\n"
-        f"⚡ +{score} Leda Score\n\n"
+        f"⚡ +{score} Business Score\n\n"
         f"Движение зафиксировано."
     )
