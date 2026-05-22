@@ -171,6 +171,28 @@ async def ensure_club_user(
         return None
 
 
+async def has_completed_quiz(telegram_id: int) -> bool:
+    """Check whether the user has completed onboarding in quiz_data."""
+    try:
+        quiz_profile = await get_user(telegram_id)
+        if not quiz_profile:
+            return False
+
+        required_fields = [
+            "goal",
+            "current_income",
+            "main_obstacle",
+            "time_commitment",
+            "ready_to_report",
+            "paid_participation",
+            "phone_number",
+        ]
+        return all(bool(quiz_profile.get(field)) for field in required_fields)
+    except Exception as e:
+        logger.error(f"Error checking quiz completion for {telegram_id}: {e}", exc_info=True)
+        return False
+
+
 async def update_user_profile(
     user_id: int,
     business_level: str,

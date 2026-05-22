@@ -7,7 +7,7 @@ import json
 from aiogram import Router, types, F
 from app import database, cache
 from app.config import CLUB_GROUP_URL
-from app.keyboards.inline.start import contact_reply_keyboard, club_group_keyboard
+from app.keyboards.inline.start import contact_reply_keyboard, club_group_keyboard, private_hub_reply_keyboard
 from app.services import quiz_service
 
 logger = logging.getLogger(__name__)
@@ -137,9 +137,15 @@ async def handle_contact_share(message: types.Message) -> None:
 
     await message.answer(
         "Спасибо! Анкету и номер телефона сохранили.",
-        reply_markup=types.ReplyKeyboardRemove(),
+        reply_markup=private_hub_reply_keyboard(),
     )
     await message.answer(
-        "LedoLab Business Club\n\nВсе рабочие кнопки и дальнейшие действия доступны только в группе.",
+        "LedoLab Business Club\n\nКвиз пройден ✅\n"
+        "Кнопку квиза я больше не показываю — она тебе уже не нужна.\n\n"
+        "Внизу у тебя теперь постоянные кнопки:\n"
+        "• цель на 30 дней\n"
+        "• план на 7 дней\n"
+        "• мой день\n\n"
+        "Все рабочие действия и отчеты доступны через группу.",
         reply_markup=club_group_keyboard(CLUB_GROUP_URL),
     )

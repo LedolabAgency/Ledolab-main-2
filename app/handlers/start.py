@@ -15,6 +15,7 @@ from app.keyboards.inline.start import (
     goal_day_step_keyboard,
     goal_review_keyboard,
     goal_edit_days_keyboard,
+    private_hub_reply_keyboard,
 )
 from app import database, cache
 from app.states.quiz import GoalStates
@@ -67,10 +68,17 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
             return
 
         if start_arg == "goal_setup":
+            if not await database.has_completed_quiz(user_id):
+                await message.answer(
+                    "🧭 Сначала пройди квиз, чтобы я понял твой контекст и только потом помог собрать цель на 30 дней 👇",
+                    reply_markup=quiz_reply_keyboard(WEB_APP_URL),
+                )
+                return
+
             if await cache.get_data(_goal_lock_key(user_id)):
                 await message.answer(
                     "Цель на 30 дней уже зафиксирована. Пока срок не закончится, новую добавить нельзя.",
-                    reply_markup=club_group_keyboard(CLUB_GROUP_URL),
+                    reply_markup=private_hub_reply_keyboard(),
                 )
                 return
 
@@ -79,15 +87,13 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
             await message.answer("Какая твоя цель на 30 дней?")
             return
 
-        # Check if user already registered
-        existing_user = await database.get_user(user_id)
-        
-        if existing_user:
+        has_quiz = await database.has_completed_quiz(user_id)
+        if has_quiz:
             await message.answer(
-                f"Привет, {message.from_user.first_name}! Ты уже в LedoLab Business Club.",
-                reply_markup=club_group_keyboard(CLUB_GROUP_URL),
+                f"Привет, {message.from_user.first_name}! Ты уже в LedoLab Business Club 🔥",
+                reply_markup=private_hub_reply_keyboard(),
             )
-            await message.answer("Все рабочие действия доступны только в группе LedoLab Business Club.")
+            await message.answer("Рабочие действия доступны в группе, а личка помогает быстро вспомнить цель и план.")
             return
         
         # New user - show welcome
@@ -111,10 +117,18 @@ async def private_goal_text(message: types.Message, state: FSMContext) -> None:
         await state.clear()
         return
 
+    if not await database.has_completed_quiz(message.from_user.id):
+        await message.answer(
+            "🧭 Сначала пройди квиз, а потом уже собирай большую цель 👇",
+            reply_markup=quiz_reply_keyboard(WEB_APP_URL),
+        )
+        await state.clear()
+        return
+
     if await cache.get_data(_goal_lock_key(message.from_user.id)):
         await message.answer(
             "Цель на 30 дней уже зафиксирована. Изменить ее можно только после окончания текущего периода.",
-            reply_markup=club_group_keyboard(CLUB_GROUP_URL),
+            reply_markup=private_hub_reply_keyboard(),
         )
         await state.clear()
         return
@@ -278,10 +292,90 @@ async def goal_confirm(query: types.CallbackQuery, state: FSMContext) -> None:
 
     await query.message.answer(
         "🚀 Цели утверждены и сохранены.\n\nТеперь возвращайся в группу и открывай /menu -> 📅 Мой день (3 задачи).",
-        reply_markup=club_group_keyboard(CLUB_GROUP_URL),
+        reply_markup=private_hub_reply_keyboard(),
     )
+    if CLUB_GROUP_URL:
+        await query.message.answer(
+            "Если хочешь вернуться в группу прямо сейчас — вот кнопка ниже 👇",
+            reply_markup=club_group_keyboard(CLUB_GROUP_URL),
+        )
     await state.clear()
     await query.answer()
+
+
+@router.message(F.text == "🎯 Моя цель 30 дней")
+async def show_30_day_goal(message: types.Message) -> None:
+    if not await database.has_completed_quiz(message.from_user.id):
+        await message.answer(
+            "🧭 Сначала пройди квиз, чтобы я мог открыть тебе цель и маршрут 👇",
+            reply_markup=quiz_reply_keyboard(WEB_APP_URL),
+        )
+        return
+
+    club_user = await database.ensure_club_user(
+        telegram_id=message.from_user.id,
+        username=message.from_user.username,
+        first_name=message.from_user.first_name,
+        language_code=message.from_user.language_code or "ru",
+    )
+    if not club_user:
+        await message.answer("Не удалось получить твою цель. Попробуй позже.")
+        return
+
+    active_goal = await database.get_active_goal(club_user["id"])
+    if not active_goal:
+        await message.answer("Пока цель не задана. Нажми кнопку цели и мы соберем ее вместе.")
+        return
+
+    await message.answer(
+        f"🎯 Твоя цель на 30 дней:\n\n{active_goal['goal_text']}",
+        reply_markup=private_hub_reply_keyboard(),
+    )
+
+
+@router.message(F.text == "📅 Мой план на 7 дней")
+async def show_7_day_goal(message: types.Message) -> None:
+    if not await database.has_completed_quiz(message.from_user.id):
+        await message.answer(
+            "🧭 Сначала пройди квиз, а потом я покажу тебе план на 7 дней 👇",
+            reply_markup=quiz_reply_keyboard(WEB_APP_URL),
+        )
+        return
+
+    club_user = await database.ensure_club_user(
+        telegram_id=message.from_user.id,
+        username=message.from_user.username,
+        first_name=message.from_user.first_name,
+        language_code=message.from_user.language_code or "ru",
+    )
+    if not club_user:
+        await message.answer("Не удалось получить твой план. Попробуй позже.")
+        return
+
+    week_plan = await database.get_week_plan_for_user(club_user["id"])
+    if not week_plan:
+        await message.answer("Пока план на 7 дней не задан. Сначала собери цель на 30 дней.")
+        return
+
+    lines = ["📅 Твой план на 7 дней:\n"]
+    for idx, item in enumerate(week_plan, 1):
+        lines.append(f"{idx}. {item}")
+    await message.answer("\n".join(lines), reply_markup=private_hub_reply_keyboard())
+
+
+@router.message(F.text == "📌 Мой день (до 3х задач)")
+async def show_day_hint(message: types.Message) -> None:
+    if not await database.has_completed_quiz(message.from_user.id):
+        await message.answer(
+            "🧭 Сначала пройди квиз, а потом уже собирай свой день 👇",
+            reply_markup=quiz_reply_keyboard(WEB_APP_URL),
+        )
+        return
+
+    await message.answer(
+        "📌 День собирается через рабочее меню в группе.\n\nОткрой группу LedoLab Business Club и нажми /menu -> «📅 Мой день (3 задачи)».",
+        reply_markup=private_hub_reply_keyboard(),
+    )
 
 
 @router.message(Command("menu"))
@@ -292,9 +386,23 @@ async def cmd_menu(message: types.Message) -> None:
     """
     try:
         if message.chat.type == "private":
+            if await database.has_completed_quiz(message.from_user.id):
+                await message.answer(
+                    "Рабочие кнопки доступны только в группе LedoLab Business Club.",
+                    reply_markup=club_group_keyboard(CLUB_GROUP_URL),
+                )
+            else:
+                await message.answer(
+                    "🧭 Сначала пройди квиз в личке, а потом уже переходи к рабочим кнопкам клуба 👇",
+                    reply_markup=quiz_reply_keyboard(WEB_APP_URL),
+                )
+            return
+
+        if not await database.has_completed_quiz(message.from_user.id):
             await message.answer(
-                "Рабочие кнопки доступны только в группе LedoLab Business Club.",
-                reply_markup=club_group_keyboard(CLUB_GROUP_URL),
+                "🧭 Сначала пройди квиз в личке бота.\n\n"
+                "Пока квиз не пройден, рабочее меню клуба закрыто 👇",
+                reply_markup=open_bot_private_keyboard((await message.bot.get_me()).username),
             )
             return
 

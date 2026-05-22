@@ -48,9 +48,38 @@ async def _ensure_group_callback(query: types.CallbackQuery) -> bool:
     return True
 
 
+async def _ensure_quiz_for_query(query: types.CallbackQuery) -> bool:
+    if await database.has_completed_quiz(query.from_user.id):
+        return True
+
+    me = await query.bot.get_me()
+    await query.message.answer(
+        "🧭 Сначала пройди квиз в личке бота.\n\n"
+        "Пока квиз не пройден, рабочие кнопки клуба закрыты 👇",
+        reply_markup=open_private_flow_keyboard(me.username, "onboarding", "ПРОЙТИ КВИЗ В ЛИЧКЕ"),
+    )
+    await query.answer()
+    return False
+
+
+async def _ensure_quiz_for_message(message: types.Message) -> bool:
+    if await database.has_completed_quiz(message.from_user.id):
+        return True
+
+    me = await message.bot.get_me()
+    await message.answer(
+        "🧭 Сначала пройди квиз в личке бота.\n\n"
+        "Пока квиз не пройден, рабочие кнопки клуба закрыты 👇",
+        reply_markup=open_private_flow_keyboard(me.username, "onboarding", "ПРОЙТИ КВИЗ В ЛИЧКЕ"),
+    )
+    return False
+
+
 @router.callback_query(F.data == "rules_view")
 async def view_rules(query: types.CallbackQuery) -> None:
     if not await _ensure_group_callback(query):
+        return
+    if not await _ensure_quiz_for_query(query):
         return
 
     me = await query.bot.get_me()
@@ -70,6 +99,8 @@ async def view_rules(query: types.CallbackQuery) -> None:
 async def start_goal_flow(query: types.CallbackQuery) -> None:
     if not await _ensure_group_callback(query):
         return
+    if not await _ensure_quiz_for_query(query):
+        return
 
     me = await query.bot.get_me()
     await query.message.answer(
@@ -86,6 +117,8 @@ async def start_goal_flow(query: types.CallbackQuery) -> None:
 @router.callback_query(F.data == "day_view")
 async def open_day_view(query: types.CallbackQuery, state: FSMContext) -> None:
     if not await _ensure_group_callback(query):
+        return
+    if not await _ensure_quiz_for_query(query):
         return
 
     me = await query.bot.get_me()
@@ -132,6 +165,9 @@ async def save_day_tasks(message: types.Message, state: FSMContext) -> None:
     if not await _ensure_group_interaction(message):
         await state.clear()
         return
+    if not await _ensure_quiz_for_message(message):
+        await state.clear()
+        return
 
     me = await message.bot.get_me()
     raw_tasks = [line.strip("-• \t") for line in message.text.splitlines() if line.strip()]
@@ -171,6 +207,8 @@ async def save_day_tasks(message: types.Message, state: FSMContext) -> None:
 async def start_report_flow(query: types.CallbackQuery, state: FSMContext) -> None:
     if not await _ensure_group_callback(query):
         return
+    if not await _ensure_quiz_for_query(query):
+        return
 
     club_user = await database.ensure_club_user(
         telegram_id=query.from_user.id,
@@ -206,6 +244,8 @@ async def start_report_flow(query: types.CallbackQuery, state: FSMContext) -> No
 async def capture_report_count(query: types.CallbackQuery, state: FSMContext) -> None:
     if not await _ensure_group_callback(query):
         return
+    if not await _ensure_quiz_for_query(query):
+        return
 
     completed_count = int(query.data.split(":", 1)[1])
     await state.update_data(completed_count=completed_count)
@@ -221,6 +261,9 @@ async def save_report_text(message: types.Message, state: FSMContext) -> None:
     if not await _ensure_group_interaction(message):
         await state.clear()
         return
+    if not await _ensure_quiz_for_message(message):
+        await state.clear()
+        return
 
     await state.update_data(report_text=message.text.strip())
     await state.set_state(ReportStates.waiting_proof)
@@ -232,6 +275,9 @@ async def save_report_text(message: types.Message, state: FSMContext) -> None:
 @router.message(ReportStates.waiting_proof, F.video | F.video_note | F.text)
 async def finish_report_flow(message: types.Message, state: FSMContext) -> None:
     if not await _ensure_group_interaction(message):
+        await state.clear()
+        return
+    if not await _ensure_quiz_for_message(message):
         await state.clear()
         return
 
@@ -298,6 +344,8 @@ async def finish_report_flow(message: types.Message, state: FSMContext) -> None:
 @router.callback_query(F.data == "rating_view")
 async def show_rating(query: types.CallbackQuery) -> None:
     if not await _ensure_group_callback(query):
+        return
+    if not await _ensure_quiz_for_query(query):
         return
 
     me = await query.bot.get_me()

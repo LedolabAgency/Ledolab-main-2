@@ -39,6 +39,20 @@ def contact_reply_keyboard() -> types.ReplyKeyboardMarkup:
     )
 
 
+def private_hub_reply_keyboard() -> types.ReplyKeyboardMarkup:
+    """Persistent private keyboard after the quiz is completed."""
+    return types.ReplyKeyboardMarkup(
+        keyboard=[
+            [types.KeyboardButton(text="🎯 Моя цель 30 дней")],
+            [types.KeyboardButton(text="📅 Мой план на 7 дней")],
+            [types.KeyboardButton(text="📌 Мой день (до 3х задач)")],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+        input_field_placeholder="Выбери действие ниже 👇",
+    )
+
+
 def club_group_keyboard(group_url: str | None) -> types.InlineKeyboardMarkup | None:
     """Single CTA that sends the user to the working group."""
     if not group_url:
