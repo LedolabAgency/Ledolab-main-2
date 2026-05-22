@@ -4,7 +4,8 @@ Callback handlers for menu navigation.
 
 import logging
 from aiogram import Router, types, F
-from app.keyboards.inline.start import club_main_menu
+from app.config import CLUB_GROUP_URL
+from app.keyboards.inline.start import club_group_keyboard
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -17,8 +18,8 @@ async def enter_club(query: types.CallbackQuery) -> None:
     """
     try:
         await query.message.edit_text(
-            "LedoLab Business Club\n\nВыбери действие:",
-            reply_markup=club_main_menu(),
+            "LedoLab Business Club\n\nВсе рабочие действия доступны только в группе.",
+            reply_markup=club_group_keyboard(CLUB_GROUP_URL),
         )
         await query.answer()
     except Exception as e:
@@ -33,8 +34,8 @@ async def back_to_menu(query: types.CallbackQuery) -> None:
     """
     try:
         await query.message.edit_text(
-            "LedoLab Business Club",
-            reply_markup=club_main_menu(),
+            "LedoLab Business Club\n\nПереходи в группу, чтобы работать с ботом дальше.",
+            reply_markup=club_group_keyboard(CLUB_GROUP_URL),
         )
         await query.answer()
     except Exception as e:

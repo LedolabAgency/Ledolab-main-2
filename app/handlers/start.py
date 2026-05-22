@@ -5,8 +5,8 @@ Start handler - initial bot greeting and quiz link.
 import logging
 from aiogram import Router, types
 from aiogram.filters import CommandStart
-from app.config import WEB_APP_URL
-from app.keyboards.inline.start import quiz_reply_keyboard, club_main_menu
+from app.config import WEB_APP_URL, CLUB_GROUP_URL
+from app.keyboards.inline.start import quiz_reply_keyboard, club_group_keyboard
 from app import database
 
 logger = logging.getLogger(__name__)
@@ -28,8 +28,9 @@ async def cmd_start(message: types.Message) -> None:
         if existing_user:
             await message.answer(
                 f"Привет, {message.from_user.first_name}! Ты уже в LedoLab Business Club.",
-                reply_markup=club_main_menu(),
+                reply_markup=club_group_keyboard(CLUB_GROUP_URL),
             )
+            await message.answer("Все рабочие действия доступны только в группе LedoLab Business Club.")
             return
         
         # New user - show welcome

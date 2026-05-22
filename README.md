@@ -70,6 +70,7 @@ ledolab/
 - `REPORTS_GROUP_ID` — ID группы для публикации отчетов (по умолчанию: 0)
 - `ADMIN_IDS` — Telegram ID админов (comma-separated)
 - `WEB_APP_URL` — URL квиза (по умолчанию: https://your-domain.com)
+- `CLUB_GROUP_URL` — ссылка-приглашение в группу, где доступны все рабочие кнопки
 - `LOG_LEVEL` — DEBUG/INFO/WARNING (по умолчанию: INFO)
 - `SENTRY_DSN` — Для мониторинга ошибок
 

@@ -19,6 +19,7 @@ REDIS_URL: Optional[str] = _getenv("REDIS_URL")
 SUPABASE_URL: Optional[str] = _getenv("SUPABASE_URL")
 SUPABASE_KEY: Optional[str] = _getenv("SUPABASE_KEY")
 WEB_APP_URL: str = _getenv("WEB_APP_URL", "https://example.com")
+CLUB_GROUP_URL: Optional[str] = _getenv("CLUB_GROUP_URL")
 
 # Опціональні
 SENTRY_DSN: Optional[str] = _getenv("SENTRY_DSN")
@@ -50,6 +51,7 @@ __all__ = [
     "SUPABASE_URL",
     "SUPABASE_KEY",
     "WEB_APP_URL",
+    "CLUB_GROUP_URL",
     "SENTRY_DSN",
     "REPORTS_GROUP_ID",
     "LOG_LEVEL",

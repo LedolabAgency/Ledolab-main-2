@@ -193,6 +193,36 @@ async def save_phone_number(telegram_id: int, phone_number: str) -> bool:
         return False
 
 
+async def save_onboarding_submission(
+    telegram_id: int,
+    quiz_data: Dict[str, str],
+    phone_number: str,
+) -> bool:
+    """Save the full onboarding payload into quiz_data in one write."""
+    try:
+        sb = get_supabase()
+        payload = {
+            "user_tg": str(telegram_id),
+            **quiz_data,
+            "phone_number": phone_number,
+        }
+        result = (
+            sb.table("quiz_data")
+            .update(payload)
+            .eq("user_tg", str(telegram_id))
+            .execute()
+        )
+
+        if not result.data:
+            sb.table("quiz_data").insert(payload).execute()
+
+        logger.info("✅ Full onboarding submission saved for %s", telegram_id)
+        return True
+    except Exception as e:
+        logger.error(f"Error saving onboarding submission {telegram_id}: {e}", exc_info=True)
+        return False
+
+
 async def create_goal(
     user_id: int,
     goal_text: str,

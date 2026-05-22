@@ -5,12 +5,17 @@ Quiz handler - processes quiz completion from WebApp.
 import logging
 import json
 from aiogram import Router, types, F
-from app import database
-from app.keyboards.inline.start import contact_reply_keyboard, club_main_menu
+from app import database, cache
+from app.config import CLUB_GROUP_URL
+from app.keyboards.inline.start import contact_reply_keyboard, club_group_keyboard
 from app.services import quiz_service
 
 logger = logging.getLogger(__name__)
 router = Router()
+
+
+def _pending_quiz_key(user_id: int) -> str:
+    return f"pending_quiz:{user_id}"
 
 
 @router.message(F.web_app_data)
@@ -47,8 +52,12 @@ async def handle_quiz_completion(message: types.Message) -> None:
             await progress_msg.edit_text("Error. Try later.")
             return
         
-        # Save quiz answers
-        await database.save_quiz_answers(user_id, quiz_data)
+        # Cache quiz answers until the user shares a phone number.
+        await cache.set_data(
+            _pending_quiz_key(user_id),
+            json.dumps(quiz_data, ensure_ascii=False),
+            ex=3600,
+        )
         
         # Calculate business profile
         profile = quiz_service.calculate_business_profile(quiz_data)
@@ -106,16 +115,31 @@ async def handle_contact_share(message: types.Message) -> None:
         message.from_user.id,
         contact.phone_number,
     )
-    await database.save_phone_number(
+    cached_quiz_data = await cache.get_data(_pending_quiz_key(message.from_user.id))
+    if not cached_quiz_data:
+        await message.answer(
+            "Не нашли твой последний квиз. Пожалуйста, пройди квиз заново.",
+            reply_markup=types.ReplyKeyboardRemove(),
+        )
+        return
+
+    quiz_data = json.loads(cached_quiz_data)
+    saved = await database.save_onboarding_submission(
         telegram_id=message.from_user.id,
+        quiz_data=quiz_data,
         phone_number=contact.phone_number,
     )
+    if not saved:
+        await message.answer("Не удалось сохранить анкету. Попробуй еще раз позже.")
+        return
+
+    await cache.delete_data(_pending_quiz_key(message.from_user.id))
 
     await message.answer(
-        "Спасибо! Номер телефона получили. Теперь можешь перейти в меню LedoLab Business Club.",
+        "Спасибо! Анкету и номер телефона сохранили.",
         reply_markup=types.ReplyKeyboardRemove(),
     )
     await message.answer(
-        "LedoLab Business Club\n\nВыбери следующее действие:",
-        reply_markup=club_main_menu(),
+        "LedoLab Business Club\n\nВсе рабочие кнопки и дальнейшие действия доступны только в группе.",
+        reply_markup=club_group_keyboard(CLUB_GROUP_URL),
     )
