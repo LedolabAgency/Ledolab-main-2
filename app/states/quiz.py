@@ -22,6 +22,9 @@ class GoalStates(StatesGroup):
     """States for 30-day goal setup."""
     waiting_goal_text = State()
     waiting_milestones = State()
+    waiting_day_text = State()
+    reviewing = State()
+    editing = State()
     confirmed = State()
 
 

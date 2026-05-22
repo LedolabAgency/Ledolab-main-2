@@ -53,6 +53,7 @@ async def view_rules(query: types.CallbackQuery) -> None:
     if not await _ensure_group_callback(query):
         return
 
+    me = await query.bot.get_me()
     text = (
         "📘 Как работает LedoLab Business To-Do Club\n\n"
         "1. Ставишь 1 цель на 30 дней.\n"
@@ -61,7 +62,7 @@ async def view_rules(query: types.CallbackQuery) -> None:
         "4. Вечером сдаешь отчет и получаешь баллы.\n"
         "5. Лучшие участники поднимаются в рейтинге и получают доступ к призам."
     )
-    await query.message.edit_text(text, reply_markup=club_main_menu())
+    await query.message.edit_text(text, reply_markup=club_main_menu(me.username))
     await query.answer()
 
 
@@ -87,6 +88,7 @@ async def open_day_view(query: types.CallbackQuery, state: FSMContext) -> None:
     if not await _ensure_group_callback(query):
         return
 
+    me = await query.bot.get_me()
     club_user = await database.ensure_club_user(
         telegram_id=query.from_user.id,
         username=query.from_user.username,
@@ -121,7 +123,7 @@ async def open_day_view(query: types.CallbackQuery, state: FSMContext) -> None:
     lines = [f"Фокус дня: {day_focus}", "", "Твои 3 задачи на сегодня:"]
     for idx, task in enumerate(tasks, 1):
         lines.append(f"{idx}. {task['task_text']}")
-    await query.message.answer("\n".join(lines), reply_markup=club_main_menu())
+    await query.message.answer("\n".join(lines), reply_markup=club_main_menu(me.username))
     await query.answer()
 
 
@@ -131,6 +133,7 @@ async def save_day_tasks(message: types.Message, state: FSMContext) -> None:
         await state.clear()
         return
 
+    me = await message.bot.get_me()
     raw_tasks = [line.strip("-• \t") for line in message.text.splitlines() if line.strip()]
     if len(raw_tasks) != 3:
         await message.answer("Нужно отправить ровно 3 задачи. Каждую задачу с новой строки.")
@@ -159,7 +162,7 @@ async def save_day_tasks(message: types.Message, state: FSMContext) -> None:
 
     await message.answer(
         "📅 День зафиксирован.\n\nТвои 3 задачи сохранены. Вечером возвращайся и сдавай отчет.",
-        reply_markup=club_main_menu(),
+        reply_markup=club_main_menu(me.username),
     )
     await state.clear()
 
@@ -232,6 +235,7 @@ async def finish_report_flow(message: types.Message, state: FSMContext) -> None:
         await state.clear()
         return
 
+    me = await message.bot.get_me()
     data = await state.get_data()
     club_user = await database.ensure_club_user(
         telegram_id=message.from_user.id,
@@ -286,7 +290,7 @@ async def finish_report_flow(message: types.Message, state: FSMContext) -> None:
     await message.bot.send_message(target_chat_id, summary)
     await message.answer(
         f"Отчет принят.\n\nБаллы начислены: +{score}\n{mood}",
-        reply_markup=club_main_menu(),
+        reply_markup=club_main_menu(me.username),
     )
     await state.clear()
 
@@ -296,7 +300,8 @@ async def show_rating(query: types.CallbackQuery) -> None:
     if not await _ensure_group_callback(query):
         return
 
+    me = await query.bot.get_me()
     users = await rating_service.get_rating_leaderboard()
     text = await rating_service.format_rating_text(users)
-    await query.message.edit_text(text, reply_markup=club_main_menu())
+    await query.message.edit_text(text, reply_markup=club_main_menu(me.username))
     await query.answer()

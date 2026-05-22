@@ -79,11 +79,54 @@ def open_private_flow_keyboard(bot_username: str, start_param: str, button_text:
     )
 
 
-def club_main_menu() -> types.InlineKeyboardMarkup:
-    """Main working menu for the group chat."""
+def goal_day_step_keyboard(day_number: int) -> types.InlineKeyboardMarkup:
+    """Single wide button for the next day step."""
     return types.InlineKeyboardMarkup(
         inline_keyboard=[
-            [types.InlineKeyboardButton(text="🎯 Моя цель (30 дней)", callback_data="goal_view")],
+            [types.InlineKeyboardButton(text=f"{day_number}-Й ДЕНЬ", callback_data=f"goal_day:{day_number}")],
+        ]
+    )
+
+
+def goal_review_keyboard() -> types.InlineKeyboardMarkup:
+    """Actions after the full 7-day plan is prepared."""
+    return types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [types.InlineKeyboardButton(text="УТВЕРДИТЬ ЦЕЛИ", callback_data="goal_confirm")],
+            [types.InlineKeyboardButton(text="ИЗМЕНИТЬ ЦЕЛИ", callback_data="goal_edit")],
+        ]
+    )
+
+
+def goal_edit_days_keyboard() -> types.InlineKeyboardMarkup:
+    """Pick which day to edit before final confirmation."""
+    return types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [types.InlineKeyboardButton(text="1-Й ДЕНЬ", callback_data="goal_edit_day:1")],
+            [types.InlineKeyboardButton(text="2-Й ДЕНЬ", callback_data="goal_edit_day:2")],
+            [types.InlineKeyboardButton(text="3-Й ДЕНЬ", callback_data="goal_edit_day:3")],
+            [types.InlineKeyboardButton(text="4-Й ДЕНЬ", callback_data="goal_edit_day:4")],
+            [types.InlineKeyboardButton(text="5-Й ДЕНЬ", callback_data="goal_edit_day:5")],
+            [types.InlineKeyboardButton(text="6-Й ДЕНЬ", callback_data="goal_edit_day:6")],
+            [types.InlineKeyboardButton(text="7-Й ДЕНЬ", callback_data="goal_edit_day:7")],
+        ]
+    )
+
+
+def club_main_menu(bot_username: str | None = None) -> types.InlineKeyboardMarkup:
+    """Main working menu for the group chat."""
+    goal_button: types.InlineKeyboardButton
+    if bot_username:
+        goal_button = types.InlineKeyboardButton(
+            text="🎯 Моя цель (30 дней)",
+            url=f"https://t.me/{bot_username}?start=goal_setup",
+        )
+    else:
+        goal_button = types.InlineKeyboardButton(text="🎯 Моя цель (30 дней)", callback_data="goal_view")
+
+    return types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [goal_button],
             [types.InlineKeyboardButton(text="📅 Мой день (3 задачи)", callback_data="day_view")],
             [types.InlineKeyboardButton(text="📤 Сдать отчет", callback_data="report_submit")],
             [types.InlineKeyboardButton(text="🏆 Рейтинг", callback_data="rating_view")],
