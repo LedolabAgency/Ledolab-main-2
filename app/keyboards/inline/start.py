@@ -65,18 +65,43 @@ def open_bot_private_keyboard(bot_username: str) -> types.InlineKeyboardMarkup:
     )
 
 
+def open_private_flow_keyboard(bot_username: str, start_param: str, button_text: str) -> types.InlineKeyboardMarkup:
+    """CTA that opens a specific private flow via deep link."""
+    return types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                types.InlineKeyboardButton(
+                    text=button_text,
+                    url=f"https://t.me/{bot_username}?start={start_param}",
+                )
+            ],
+        ]
+    )
+
+
 def club_main_menu() -> types.InlineKeyboardMarkup:
     """Main working menu for the group chat."""
     return types.InlineKeyboardMarkup(
         inline_keyboard=[
-            [types.InlineKeyboardButton(text="🎯 Поставить задачу", callback_data="task_set")],
-            [types.InlineKeyboardButton(text="⚡ Доп. задача", callback_data="task_set_extra")],
-            [types.InlineKeyboardButton(text="🚀 Главная цель", callback_data="goal_view")],
-            [types.InlineKeyboardButton(text="✅ Сдать отчет", callback_data="report_submit")],
+            [types.InlineKeyboardButton(text="🎯 Моя цель (30 дней)", callback_data="goal_view")],
+            [types.InlineKeyboardButton(text="📅 Мой день (3 задачи)", callback_data="day_view")],
+            [types.InlineKeyboardButton(text="📤 Сдать отчет", callback_data="report_submit")],
             [types.InlineKeyboardButton(text="🏆 Рейтинг", callback_data="rating_view")],
-            [types.InlineKeyboardButton(text="💤 День без фокуса", callback_data="day_skip")],
-            [types.InlineKeyboardButton(text="❌ Слил день", callback_data="day_fail")],
             [types.InlineKeyboardButton(text="📘 Как работает клуб", callback_data="rules_view")],
+        ]
+    )
+
+
+def report_count_keyboard() -> types.InlineKeyboardMarkup:
+    """Choose how many tasks were completed today."""
+    return types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                types.InlineKeyboardButton(text="0/3", callback_data="report_count:0"),
+                types.InlineKeyboardButton(text="1/3", callback_data="report_count:1"),
+                types.InlineKeyboardButton(text="2/3", callback_data="report_count:2"),
+                types.InlineKeyboardButton(text="3/3", callback_data="report_count:3"),
+            ]
         ]
     )
 

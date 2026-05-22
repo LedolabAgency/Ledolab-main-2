@@ -14,6 +14,7 @@ async def submit_report(
     user_id: str,
     task_id: str,
     report_text: str,
+    completed_tasks: int = 0,
     proof_type: Optional[str] = None,
     file_id: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
@@ -43,15 +44,13 @@ async def submit_report(
         if not report:
             return None
         
-        # Calculate and award score
-        total_score = config.REPORT_SCORE
-        
-        # Bonus for video proof
+        total_score = max(0, completed_tasks) * 10
+        if completed_tasks >= 3:
+            total_score += 10
         if proof_type == "video":
-            total_score += config.VIDEO_PROOF_SCORE
-            reason = "Report submitted with video proof"
+            reason = f"Daily report submitted with proof ({completed_tasks}/3)"
         else:
-            reason = "Daily report submitted"
+            reason = f"Daily report submitted ({completed_tasks}/3)"
         
         # Award score
         await database.award_score(user_id, total_score, reason)
@@ -61,6 +60,7 @@ async def submit_report(
         return {
             **report,
             "score_awarded": total_score,
+            "completed_tasks": completed_tasks,
         }
     except Exception as e:
         logger.error(f"Error submitting report {user_id}: {e}", exc_info=True)

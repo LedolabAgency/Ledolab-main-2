@@ -28,6 +28,7 @@ class GoalStates(StatesGroup):
 class TaskStates(StatesGroup):
     """States for daily task management."""
     waiting_task_text = State()
+    waiting_day_tasks = State()
     task_confirmed = State()
     waiting_report = State()
     report_submitted = State()
@@ -35,6 +36,7 @@ class TaskStates(StatesGroup):
 
 class ReportStates(StatesGroup):
     """States for daily report submission."""
+    waiting_completed_count = State()
     waiting_report_text = State()
     waiting_proof = State()
     proof_submitted = State()

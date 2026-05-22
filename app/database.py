@@ -348,6 +348,14 @@ async def set_active_goal(
         return None
 
 
+async def get_week_plan_for_user(user_id: str) -> List[str]:
+    """Return the current 7-day plan for the active goal."""
+    goal = await get_active_goal(user_id)
+    if not goal:
+        return []
+    return goal.get("milestones") or []
+
+
 async def get_active_goal(user_id: int) -> Optional[Dict[str, Any]]:
     """Get active goal for user."""
     try:
@@ -447,6 +455,25 @@ async def get_today_task(user_id: int, today: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+async def get_today_tasks(user_id: str, today: str) -> List[Dict[str, Any]]:
+    """Get all daily tasks for the current day."""
+    try:
+        sb = get_supabase()
+        result = (
+            sb.table("daily_tasks")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("date", today)
+            .in_("task_type", ["day_1", "day_2", "day_3"])
+            .order("task_type", desc=False)
+            .execute()
+        )
+        return result.data or []
+    except Exception as e:
+        logger.error(f"Error getting today tasks {user_id}: {e}", exc_info=True)
+        return []
+
+
 async def get_task_by_type(user_id: str, today: str, task_type: str = "main") -> Optional[Dict[str, Any]]:
     """Get today's task by task type."""
     try:
@@ -476,6 +503,20 @@ async def update_task_status(task_id: str, status: str) -> bool:
         return True
     except Exception as e:
         logger.error(f"Error updating task status {task_id}: {e}", exc_info=True)
+        return False
+
+
+async def update_tasks_status(task_ids: List[str], status: str) -> bool:
+    """Update a batch of task statuses."""
+    try:
+        if not task_ids:
+            return True
+        sb = get_supabase()
+        for task_id in task_ids:
+            sb.table("daily_tasks").update({"status": status}).eq("id", task_id).execute()
+        return True
+    except Exception as e:
+        logger.error(f"Error updating task batch status {task_ids}: {e}", exc_info=True)
         return False
 
 
