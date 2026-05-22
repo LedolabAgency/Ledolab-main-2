@@ -6,7 +6,11 @@ import logging
 from aiogram import Router, types
 from aiogram.filters import CommandStart
 from app.config import WEB_APP_URL, CLUB_GROUP_URL
-from app.keyboards.inline.start import quiz_reply_keyboard, club_group_keyboard
+from app.keyboards.inline.start import (
+    quiz_reply_keyboard,
+    club_group_keyboard,
+    open_bot_private_keyboard,
+)
 from app import database
 
 logger = logging.getLogger(__name__)
@@ -22,6 +26,15 @@ async def cmd_start(message: types.Message) -> None:
     user_id = message.from_user.id
     
     try:
+        if message.chat.type != "private":
+            me = await message.bot.get_me()
+            await message.answer(
+                "Квиз доступен только в личке с ботом.\n\n"
+                "Открой LedoLab Business Club в личных сообщениях и пройди onboarding там.",
+                reply_markup=open_bot_private_keyboard(me.username),
+            )
+            return
+
         # Check if user already registered
         existing_user = await database.get_user(user_id)
         

@@ -51,6 +51,20 @@ def club_group_keyboard(group_url: str | None) -> types.InlineKeyboardMarkup | N
     )
 
 
+def open_bot_private_keyboard(bot_username: str) -> types.InlineKeyboardMarkup:
+    """CTA that opens the bot in a private chat."""
+    return types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                types.InlineKeyboardButton(
+                    text="ОТКРЫТЬ БОТА В ЛИЧКЕ",
+                    url=f"https://t.me/{bot_username}?start=onboarding",
+                )
+            ],
+        ]
+    )
+
+
 def confirm_task() -> types.InlineKeyboardMarkup:
     """Confirm task setting."""
     return types.InlineKeyboardMarkup(
