@@ -86,7 +86,7 @@ async def view_rules(query: types.CallbackQuery) -> None:
     text = (
         "📘 Как работает LedoLab Business To-Do Club\n\n"
         "1. Ставишь 1 цель на 30 дней.\n"
-        "2. Разбиваешь ее на 7 шагов по дням.\n"
+        "2. Разбиваешь ее на 5 рабочих дней недели.\n"
         "3. Каждый день фиксируешь 3 задачи.\n"
         "4. Вечером сдаешь отчет и получаешь баллы.\n"
         "5. Лучшие участники поднимаются в рейтинге и получают доступ к призам."
@@ -122,41 +122,14 @@ async def open_day_view(query: types.CallbackQuery, state: FSMContext) -> None:
         return
 
     me = await query.bot.get_me()
-    club_user = await database.ensure_club_user(
-        telegram_id=query.from_user.id,
-        username=query.from_user.username,
-        first_name=query.from_user.first_name,
-        language_code=query.from_user.language_code or "ru",
+    await query.message.answer(
+        "Собрать день лучше в личке, чтобы ничего не терялось и весь рабочий путь был в одном месте 👇",
+        reply_markup=open_private_flow_keyboard(
+            me.username,
+            "day_setup",
+            "ОТКРЫТЬ МОЙ ДЕНЬ В ЛИЧКЕ",
+        ),
     )
-    if not club_user:
-        await query.message.answer("Не удалось подготовить профиль участника. Попробуй позже.")
-        await query.answer()
-        return
-
-    week_plan = await database.get_week_plan_for_user(club_user["id"])
-    if not week_plan:
-        await query.message.answer("Сначала задай цель на 30 дней.")
-        await query.answer()
-        return
-
-    tasks = await database.get_today_tasks(club_user["id"], _today())
-    day_number = min(datetime.now().isoweekday(), 7)
-    day_focus = week_plan[day_number - 1] if len(week_plan) >= day_number else week_plan[0]
-
-    if not tasks:
-        await state.set_state(TaskStates.waiting_day_tasks)
-        await state.update_data(day_focus=day_focus)
-        await query.message.answer(
-            f"Фокус дня:\n{day_focus}\n\n"
-            "Отправь 3 задачи на сегодня. Каждую задачу с новой строки."
-        )
-        await query.answer()
-        return
-
-    lines = [f"Фокус дня: {day_focus}", "", "Твои 3 задачи на сегодня:"]
-    for idx, task in enumerate(tasks, 1):
-        lines.append(f"{idx}. {task['task_text']}")
-    await query.message.answer("\n".join(lines), reply_markup=club_main_menu(me.username))
     await query.answer()
 
 
@@ -209,34 +182,15 @@ async def start_report_flow(query: types.CallbackQuery, state: FSMContext) -> No
         return
     if not await _ensure_quiz_for_query(query):
         return
-
-    club_user = await database.ensure_club_user(
-        telegram_id=query.from_user.id,
-        username=query.from_user.username,
-        first_name=query.from_user.first_name,
-        language_code=query.from_user.language_code or "ru",
+    me = await query.bot.get_me()
+    await query.message.answer(
+        "Отчет теперь тоже сдается в личке бота — так безопаснее для данных и удобнее для пользователя 👇",
+        reply_markup=open_private_flow_keyboard(
+            me.username,
+            "report_setup",
+            "ОТКРЫТЬ ОТЧЕТ В ЛИЧКЕ",
+        ),
     )
-    if not club_user:
-        await query.message.answer("Не удалось подготовить профиль участника. Попробуй позже.")
-        await query.answer()
-        return
-
-    tasks = await database.get_today_tasks(club_user["id"], _today())
-    if not tasks:
-        await query.message.answer("Сначала задай «📅 Мой день (3 задачи)».")
-        await query.answer()
-        return
-
-    lines = ["Что ты сделал сегодня?", ""]
-    for idx, task in enumerate(tasks, 1):
-        lines.append(f"{idx}. {task['task_text']}")
-
-    await state.set_state(ReportStates.waiting_completed_count)
-    await state.update_data(
-        task_ids=[task["id"] for task in tasks],
-        task_texts=[task["task_text"] for task in tasks],
-    )
-    await query.message.answer("\n".join(lines), reply_markup=report_count_keyboard())
     await query.answer()
 
 

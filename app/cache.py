@@ -172,3 +172,31 @@ def seconds_until_midnight() -> int:
     tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
     ttl = int((tomorrow - now).total_seconds())
     return max(ttl, 60)
+
+
+def seconds_until_next_sunday_21() -> int:
+    """Return seconds until the next Sunday 21:00 local time."""
+    now = datetime.now()
+    target = now.replace(hour=21, minute=0, second=0, microsecond=0)
+    days_ahead = (6 - now.weekday()) % 7
+    target = target + timedelta(days=days_ahead)
+    if target <= now:
+        target += timedelta(days=7)
+    ttl = int((target - now).total_seconds())
+    return max(ttl, 60)
+
+
+async def delete_keys_by_patterns(patterns: list[str]) -> int:
+    """Delete all Redis keys matching the provided patterns."""
+    if not redis_client:
+        return 0
+
+    deleted = 0
+    try:
+        for pattern in patterns:
+            async for key in redis_client.scan_iter(match=pattern):
+                deleted += int(await redis_client.delete(key))
+        return deleted
+    except Exception as e:
+        logger.error(f"Error deleting Redis keys by patterns {patterns}: {e}", exc_info=True)
+        return deleted

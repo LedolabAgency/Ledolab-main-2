@@ -171,6 +171,43 @@ async def ensure_club_user(
         return None
 
 
+async def resolve_telegram_id_by_handle_or_id(raw_value: str) -> Optional[int]:
+    """Resolve a target telegram id from plain id or @username."""
+    candidate = raw_value.strip()
+    if not candidate:
+        return None
+
+    if candidate.isdigit():
+        return int(candidate)
+
+    username = candidate.lstrip("@")
+    try:
+        sb = get_supabase()
+
+        users_result = (
+            sb.table("users")
+            .select("telegram_id")
+            .eq("username", username)
+            .limit(1)
+            .execute()
+        )
+        if users_result.data:
+            return int(users_result.data[0]["telegram_id"])
+
+        quiz_result = (
+            sb.table("quiz_data")
+            .select("user_tg")
+            .eq("username", username)
+            .limit(1)
+            .execute()
+        )
+        if quiz_result.data:
+            return int(quiz_result.data[0]["user_tg"])
+    except Exception as e:
+        logger.error(f"Error resolving target {raw_value}: {e}", exc_info=True)
+    return None
+
+
 async def has_completed_quiz(telegram_id: int) -> bool:
     """Check whether the user has completed onboarding in quiz_data."""
     try:
@@ -191,6 +228,35 @@ async def has_completed_quiz(telegram_id: int) -> bool:
     except Exception as e:
         logger.error(f"Error checking quiz completion for {telegram_id}: {e}", exc_info=True)
         return False
+
+
+async def reset_user_data(telegram_id: int) -> Dict[str, int]:
+    """Delete all database rows for a user across quiz and club tables."""
+    stats = {
+        "quiz_data": 0,
+        "users": 0,
+    }
+    try:
+        sb = get_supabase()
+
+        quiz_result = (
+            sb.table("quiz_data")
+            .delete()
+            .eq("user_tg", str(telegram_id))
+            .execute()
+        )
+        stats["quiz_data"] = len(quiz_result.data or [])
+
+        users_result = (
+            sb.table("users")
+            .delete()
+            .eq("telegram_id", telegram_id)
+            .execute()
+        )
+        stats["users"] = len(users_result.data or [])
+    except Exception as e:
+        logger.error(f"Error resetting database data for {telegram_id}: {e}", exc_info=True)
+    return stats
 
 
 async def update_user_profile(

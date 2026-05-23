@@ -44,7 +44,7 @@ def private_hub_reply_keyboard() -> types.ReplyKeyboardMarkup:
     return types.ReplyKeyboardMarkup(
         keyboard=[
             [types.KeyboardButton(text="🎯 Моя цель 30 дней")],
-            [types.KeyboardButton(text="📅 Мой план на 7 дней")],
+            [types.KeyboardButton(text="📅 Мой план на 5 дней")],
             [types.KeyboardButton(text="📌 Мой день (до 3х задач)")],
         ],
         resize_keyboard=True,
@@ -121,8 +121,6 @@ def goal_edit_days_keyboard() -> types.InlineKeyboardMarkup:
             [types.InlineKeyboardButton(text="3-Й ДЕНЬ", callback_data="goal_edit_day:3")],
             [types.InlineKeyboardButton(text="4-Й ДЕНЬ", callback_data="goal_edit_day:4")],
             [types.InlineKeyboardButton(text="5-Й ДЕНЬ", callback_data="goal_edit_day:5")],
-            [types.InlineKeyboardButton(text="6-Й ДЕНЬ", callback_data="goal_edit_day:6")],
-            [types.InlineKeyboardButton(text="7-Й ДЕНЬ", callback_data="goal_edit_day:7")],
         ]
     )
 

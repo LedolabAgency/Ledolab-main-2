@@ -82,7 +82,13 @@ async def handle_quiz_completion(message: types.Message) -> None:
         
         # Ask for the final action after quiz completion
         await message.answer(
-            profile_text,
+            profile_text
+            + "\n\n"
+            + "Главная зона внимания: ежедневные действия и измеримый прогресс.\n\n"
+            + "Следующий шаг — войти в LedoLab Business Club.\n"
+            + "Там ты ставишь одну глобальную цель на месяц, далее дробишь на 5 дней (неделю), "
+            + "после каждое утро разделяешь на более мелкие задачи, вечером сдаешь отчет "
+            + "и растешь в рейтинге предпринимателей в охоте за призом.",
         )
         await message.answer(
             "Последнее действие — поделиться номером телефона.",
@@ -144,7 +150,7 @@ async def handle_contact_share(message: types.Message) -> None:
         "Кнопку квиза я больше не показываю — она тебе уже не нужна.\n\n"
         "Внизу у тебя теперь постоянные кнопки:\n"
         "• цель на 30 дней\n"
-        "• план на 7 дней\n"
+        "• план на 5 дней\n"
         "• мой день\n\n"
         "Все рабочие действия и отчеты доступны через группу.",
         reply_markup=club_group_keyboard(CLUB_GROUP_URL),
