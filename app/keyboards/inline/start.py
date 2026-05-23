@@ -65,6 +65,18 @@ def club_group_keyboard(group_url: str | None) -> types.InlineKeyboardMarkup | N
     )
 
 
+def return_to_group_keyboard(group_url: str | None) -> types.InlineKeyboardMarkup | None:
+    """Compact CTA for returning to the club group."""
+    if not group_url:
+        return None
+
+    return types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [types.InlineKeyboardButton(text="↩️ Вернуться в группу", url=group_url)],
+        ]
+    )
+
+
 def open_bot_private_keyboard(bot_username: str) -> types.InlineKeyboardMarkup:
     """CTA that opens the bot in a private chat."""
     return types.InlineKeyboardMarkup(

@@ -26,6 +26,7 @@ from app.keyboards.inline.start import (
     open_bot_private_keyboard,
     private_hub_reply_keyboard,
     quiz_reply_keyboard,
+    return_to_group_keyboard,
 )
 from app.states.quiz import GoalStates, TaskStates
 
@@ -312,6 +313,10 @@ async def _enter_day_launch(message: types.Message, state: FSMContext) -> None:
         for idx, task in enumerate(existing_tasks, 1):
             lines.append(f"{idx}. {task['task_text']}")
         await message.answer("\n".join(lines), reply_markup=private_hub_reply_keyboard())
+        await message.answer(
+            "Все зафиксировано. Когда захочешь вернуться в клуб — вот кнопка 👇",
+            reply_markup=return_to_group_keyboard(CLUB_GROUP_URL),
+        )
         return
 
     if datetime.now().hour >= 22:
@@ -338,6 +343,10 @@ async def _enter_day_launch(message: types.Message, state: FSMContext) -> None:
     if day_focus:
         text += f"\n\nСегодняшний фокус из твоего 5-дневного плана:\n📍 {day_focus}"
     await message.answer(text, reply_markup=day_start_keyboard())
+    await message.answer(
+        "Если пока не хочешь собирать день — можешь вернуться в группу 👇",
+        reply_markup=return_to_group_keyboard(CLUB_GROUP_URL),
+    )
 
 
 async def _finalize_day_tasks(message: types.Message, actor: types.User, state: FSMContext) -> None:
@@ -802,6 +811,10 @@ async def show_30_day_goal(message: types.Message, state: FSMContext) -> None:
         f"🎯 Твоя цель на 30 дней:\n\n{active_goal['goal_text']}",
         reply_markup=private_hub_reply_keyboard(),
     )
+    await message.answer(
+        "Если хочешь продолжить работу в клубе — возвращайся в группу 👇",
+        reply_markup=return_to_group_keyboard(CLUB_GROUP_URL),
+    )
 
 
 @router.message(F.text == "📅 Мой план на 5 дней")
@@ -828,6 +841,10 @@ async def show_5_day_goal(message: types.Message) -> None:
     for idx, item in enumerate(week_plan, 1):
         lines.append(f"{idx}. {item}")
     await message.answer("\n".join(lines), reply_markup=private_hub_reply_keyboard())
+    await message.answer(
+        "Готов двигаться дальше? Возвращайся в группу 👇",
+        reply_markup=return_to_group_keyboard(CLUB_GROUP_URL),
+    )
 
 
 @router.message(F.text == "📌 Мой день (до 3х задач)")
@@ -866,7 +883,7 @@ async def cmd_menu(message: types.Message) -> None:
         from app.keyboards.inline.start import club_main_menu  # local import to avoid cycle in type checkers
 
         await message.answer(
-            "LedoLab Business Club\n\nРабочее меню:",
+            "LedoLab Business Club — клуб сильнейших\n\nРабочее меню:",
             reply_markup=club_main_menu(me.username),
         )
     except Exception as e:
