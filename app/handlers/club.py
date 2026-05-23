@@ -182,15 +182,33 @@ async def start_report_flow(query: types.CallbackQuery, state: FSMContext) -> No
         return
     if not await _ensure_quiz_for_query(query):
         return
-    me = await query.bot.get_me()
-    await query.message.answer(
-        "Отчет теперь тоже сдается в личке бота — так безопаснее для данных и удобнее для пользователя 👇",
-        reply_markup=open_private_flow_keyboard(
-            me.username,
-            "report_setup",
-            "ОТКРЫТЬ ОТЧЕТ В ЛИЧКЕ",
-        ),
+
+    club_user = await database.ensure_club_user(
+        telegram_id=query.from_user.id,
+        username=query.from_user.username,
+        first_name=query.from_user.first_name,
+        language_code=query.from_user.language_code or "ru",
     )
+    if not club_user:
+        await query.message.answer("Не удалось подготовить профиль участника. Попробуй позже.")
+        await query.answer()
+        return
+
+    tasks = await database.get_today_tasks(club_user["id"], _today())
+    if not tasks:
+        await query.message.answer("Сначала собери день через кнопку `📅 Мой день (до 3х задач)`.")
+        await query.answer()
+        return
+
+    lines = ["📤 Что ты сделал сегодня?\n"]
+    for idx, task in enumerate(tasks, 1):
+        lines.append(f"{idx}. {task['task_text']}")
+    await state.set_state(ReportStates.waiting_completed_count)
+    await state.update_data(
+        task_ids=[task["id"] for task in tasks],
+        task_texts=[task["task_text"] for task in tasks],
+    )
+    await query.message.answer("\n".join(lines), reply_markup=report_count_keyboard())
     await query.answer()
 
 

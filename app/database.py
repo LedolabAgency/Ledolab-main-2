@@ -230,6 +230,33 @@ async def has_completed_quiz(telegram_id: int) -> bool:
         return False
 
 
+async def has_phone_number(telegram_id: int) -> bool:
+    """Check whether quiz_data already contains a phone number for the user."""
+    try:
+        quiz_profile = await get_user(telegram_id)
+        return bool((quiz_profile or {}).get("phone_number"))
+    except Exception as e:
+        logger.error(f"Error checking phone number for {telegram_id}: {e}", exc_info=True)
+        return False
+
+
+async def has_any_day_tasks(user_id: str) -> bool:
+    """Check whether the user has ever created at least one day task."""
+    try:
+        sb = get_supabase()
+        result = (
+            sb.table("daily_tasks")
+            .select("id")
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+        return bool(result.data)
+    except Exception as e:
+        logger.error(f"Error checking day tasks for {user_id}: {e}", exc_info=True)
+        return False
+
+
 async def reset_user_data(telegram_id: int) -> Dict[str, int]:
     """Delete all database rows for a user across quiz and club tables."""
     stats = {

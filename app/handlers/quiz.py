@@ -7,7 +7,7 @@ import json
 from aiogram import Router, types, F
 from app import database, cache
 from app.config import CLUB_GROUP_URL
-from app.keyboards.inline.start import contact_reply_keyboard, club_group_keyboard, private_hub_reply_keyboard
+from app.keyboards.inline.start import contact_reply_keyboard, club_group_keyboard
 from app.services import quiz_service
 
 logger = logging.getLogger(__name__)
@@ -52,6 +52,9 @@ async def handle_quiz_completion(message: types.Message) -> None:
             await progress_msg.edit_text("Error. Try later.")
             return
         
+        # Save quiz answers immediately so the user can resume even if Redis expires.
+        await database.save_quiz_answers(user_id, quiz_data)
+
         # Cache quiz answers until the user shares a phone number.
         await cache.set_data(
             _pending_quiz_key(user_id),
@@ -122,36 +125,36 @@ async def handle_contact_share(message: types.Message) -> None:
         contact.phone_number,
     )
     cached_quiz_data = await cache.get_data(_pending_quiz_key(message.from_user.id))
-    if not cached_quiz_data:
-        await message.answer(
-            "Не нашли твой последний квиз. Пожалуйста, пройди квиз заново.",
-            reply_markup=types.ReplyKeyboardRemove(),
+    if cached_quiz_data:
+        quiz_data = json.loads(cached_quiz_data)
+        saved = await database.save_onboarding_submission(
+            telegram_id=message.from_user.id,
+            quiz_data=quiz_data,
+            phone_number=contact.phone_number,
         )
-        return
-
-    quiz_data = json.loads(cached_quiz_data)
-    saved = await database.save_onboarding_submission(
-        telegram_id=message.from_user.id,
-        quiz_data=quiz_data,
-        phone_number=contact.phone_number,
-    )
-    if not saved:
-        await message.answer("Не удалось сохранить анкету. Попробуй еще раз позже.")
-        return
+        if not saved:
+            await message.answer("Не удалось сохранить анкету. Попробуй еще раз позже.")
+            return
+    else:
+        saved = await database.save_phone_number(
+            telegram_id=message.from_user.id,
+            phone_number=contact.phone_number,
+        )
+        if not saved:
+            await message.answer("Не удалось сохранить номер телефона. Попробуй еще раз позже.")
+            return
 
     await cache.delete_data(_pending_quiz_key(message.from_user.id))
 
     await message.answer(
         "Спасибо! Анкету и номер телефона сохранили.",
-        reply_markup=private_hub_reply_keyboard(),
+        reply_markup=types.ReplyKeyboardRemove(),
     )
     await message.answer(
         "LedoLab Business Club\n\nКвиз пройден ✅\n"
         "Кнопку квиза я больше не показываю — она тебе уже не нужна.\n\n"
-        "Внизу у тебя теперь постоянные кнопки:\n"
-        "• цель на 30 дней\n"
-        "• план на 5 дней\n"
-        "• мой день\n\n"
-        "Все рабочие действия и отчеты доступны через группу.",
+        "Дальше все начинается с группы:\n"
+        "там есть кнопка `🎯 Моя цель (30 дней)`.\n\n"
+        "С нее ты зайдешь в главный сценарий клуба и соберешь свой маршрут шаг за шагом.",
         reply_markup=club_group_keyboard(CLUB_GROUP_URL),
     )

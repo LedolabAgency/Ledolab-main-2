@@ -21,10 +21,13 @@ class QuizStates(StatesGroup):
 class GoalStates(StatesGroup):
     """States for 30-day goal setup."""
     waiting_goal_text = State()
+    confirming_goal = State()
     waiting_milestones = State()
     waiting_day_text = State()
     reviewing = State()
     editing = State()
+    ready_decision = State()
+    day_launch = State()
     confirmed = State()
 
 
@@ -32,6 +35,7 @@ class TaskStates(StatesGroup):
     """States for daily task management."""
     waiting_task_text = State()
     waiting_day_tasks = State()
+    collecting_day_tasks = State()
     task_confirmed = State()
     waiting_report = State()
     report_submitted = State()

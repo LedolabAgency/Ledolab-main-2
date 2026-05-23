@@ -103,11 +103,21 @@ def goal_day_step_keyboard(day_number: int) -> types.InlineKeyboardMarkup:
 
 
 def goal_review_keyboard() -> types.InlineKeyboardMarkup:
-    """Actions after the full 7-day plan is prepared."""
+    """Actions after the full 5-day plan is prepared."""
     return types.InlineKeyboardMarkup(
         inline_keyboard=[
-            [types.InlineKeyboardButton(text="УТВЕРДИТЬ ЦЕЛИ", callback_data="goal_confirm")],
-            [types.InlineKeyboardButton(text="ИЗМЕНИТЬ ЦЕЛИ", callback_data="goal_edit")],
+            [types.InlineKeyboardButton(text="✅ Утвердить план", callback_data="goal_confirm")],
+            [types.InlineKeyboardButton(text="✏️ Изменить план", callback_data="goal_edit")],
+        ]
+    )
+
+
+def goal_text_confirm_keyboard() -> types.InlineKeyboardMarkup:
+    """Confirm or edit the main 30-day goal text."""
+    return types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [types.InlineKeyboardButton(text="✅ Подтвердить цель", callback_data="goal_text_confirm")],
+            [types.InlineKeyboardButton(text="✏️ Изменить цель", callback_data="goal_text_edit")],
         ]
     )
 
@@ -121,6 +131,36 @@ def goal_edit_days_keyboard() -> types.InlineKeyboardMarkup:
             [types.InlineKeyboardButton(text="3-Й ДЕНЬ", callback_data="goal_edit_day:3")],
             [types.InlineKeyboardButton(text="4-Й ДЕНЬ", callback_data="goal_edit_day:4")],
             [types.InlineKeyboardButton(text="5-Й ДЕНЬ", callback_data="goal_edit_day:5")],
+        ]
+    )
+
+
+def goal_ready_keyboard() -> types.InlineKeyboardMarkup:
+    """Ask whether the user is ready to start today."""
+    return types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [types.InlineKeyboardButton(text="🔥 Готов начать сегодня", callback_data="goal_ready_now")],
+            [types.InlineKeyboardButton(text="⏳ Начну позже", callback_data="goal_ready_later")],
+        ]
+    )
+
+
+def day_start_keyboard() -> types.InlineKeyboardMarkup:
+    """Start or postpone today's task setup."""
+    return types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [types.InlineKeyboardButton(text="🚀 Погнали", callback_data="day_go")],
+            [types.InlineKeyboardButton(text="⏳ Отложить на завтра", callback_data="day_tomorrow")],
+        ]
+    )
+
+
+def day_task_next_keyboard(next_task_number: int) -> types.InlineKeyboardMarkup:
+    """Continue to the next task or skip the rest."""
+    return types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [types.InlineKeyboardButton(text=f"➕ Добавить задачу №{next_task_number}", callback_data=f"day_task_next:{next_task_number}")],
+            [types.InlineKeyboardButton(text="⏭ Пропустить", callback_data="day_task_skip")],
         ]
     )
 
