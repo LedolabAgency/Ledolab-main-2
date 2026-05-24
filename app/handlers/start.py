@@ -938,8 +938,30 @@ async def capture_report_proof(message: types.Message, state: FSMContext) -> Non
     )
 
 
+@router.message(
+    ReportStates.waiting_proof,
+    F.text.regexp(r"^/menu(@[A-Za-z0-9_]+)?$"),
+)
+@router.message(
+    ReportStates.waiting_task_comment,
+    F.text.regexp(r"^/menu(@[A-Za-z0-9_]+)?$"),
+)
+async def exit_report_state_to_menu(message: types.Message, state: FSMContext) -> None:
+    logger.info(
+        "REPORT state interrupted by /menu | user=%s chat=%s type=%s",
+        message.from_user.id,
+        message.chat.id,
+        message.chat.type,
+    )
+    await state.clear()
+    await cmd_menu(message)
+
+
 @router.message(ReportStates.waiting_proof)
-async def reject_report_without_proof(message: types.Message) -> None:
+async def reject_report_without_proof(message: types.Message, state: FSMContext) -> None:
+    if message.chat.type != "private":
+        await state.clear()
+        return
     await message.answer(
         "Нужен именно пруф по задаче: кружок, видео или фото.\n"
         "Обычный текст без доказательства я в отчет не приму."
