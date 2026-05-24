@@ -51,7 +51,14 @@ async def handle_quiz_completion(message: types.Message) -> None:
         if not user:
             await progress_msg.edit_text("Error. Try later.")
             return
-        
+
+        await database.ensure_club_user(
+            telegram_id=user_id,
+            username=username,
+            first_name=first_name,
+            language_code=message.from_user.language_code or "ru",
+        )
+
         # Save quiz answers immediately so the user can resume even if Redis expires.
         await database.save_quiz_answers(user_id, quiz_data)
 
@@ -59,7 +66,7 @@ async def handle_quiz_completion(message: types.Message) -> None:
         await cache.set_data(
             _pending_quiz_key(user_id),
             json.dumps(quiz_data, ensure_ascii=False),
-            ex=3600,
+            ex=30 * 24 * 60 * 60,
         )
         
         # Calculate business profile

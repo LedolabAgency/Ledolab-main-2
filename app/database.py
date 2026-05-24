@@ -339,10 +339,11 @@ async def save_quiz_answers(user_id: int, quiz_data: Dict[str, str]) -> bool:
         )
 
         if not result.data:
-            sb.table("quiz_data").insert({
-                "user_tg": str(user_id),
-                **quiz_data,
-            }).execute()
+            logger.info(
+                "No existing quiz_data row for %s yet. Deferring insert until phone number is shared.",
+                user_id,
+            )
+            return True
 
         logger.info(f"✅ Quiz answers saved in quiz_data: {user_id}")
         return True

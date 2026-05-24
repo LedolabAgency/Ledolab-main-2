@@ -228,6 +228,13 @@ async def _user_has_phone(user_id: int) -> bool:
     return await database.has_phone_number(user_id)
 
 
+async def _needs_phone_completion(user: types.User) -> bool:
+    if await _user_has_phone(user.id):
+        return False
+    club_user = await database.get_club_user(user.id)
+    return bool(club_user)
+
+
 async def _can_show_private_hub(user: types.User) -> bool:
     club_user = await database.ensure_club_user(
         telegram_id=user.id,
@@ -243,7 +250,7 @@ async def _can_show_private_hub(user: types.User) -> bool:
 async def _ensure_quiz_and_phone_message(message: types.Message) -> bool:
     user_id = message.from_user.id
     quiz_profile = await database.get_user(user_id)
-    if quiz_profile and not await _user_has_phone(user_id):
+    if (quiz_profile and not await _user_has_phone(user_id)) or await _needs_phone_completion(message.from_user):
         await _show_phone_request(message)
         return False
     if await database.has_completed_quiz(user_id):
@@ -258,7 +265,7 @@ async def _ensure_quiz_and_phone_message(message: types.Message) -> bool:
 async def _ensure_quiz_and_phone_query(query: types.CallbackQuery) -> bool:
     user_id = query.from_user.id
     quiz_profile = await database.get_user(user_id)
-    if quiz_profile and not await _user_has_phone(user_id):
+    if (quiz_profile and not await _user_has_phone(user_id)) or await _needs_phone_completion(query.from_user):
         await _show_phone_request(query.message)
         await query.answer()
         return False
@@ -423,7 +430,7 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
         has_phone = await _user_has_phone(user_id)
         has_quiz = await database.has_completed_quiz(user_id)
 
-        if quiz_profile and not has_phone:
+        if (quiz_profile and not has_phone) or await _needs_phone_completion(message.from_user):
             await _show_phone_request(message)
             return
 
