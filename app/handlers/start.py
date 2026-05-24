@@ -1277,6 +1277,13 @@ async def admin_reset_user(message: types.Message) -> None:
         "🧹 Сброс выполнен.\n\n"
         f"Telegram ID: <code>{target_telegram_id}</code>\n"
         f"Удалено из quiz_data: {db_stats['quiz_data']}\n"
+        f"Удалено из goals: {db_stats['goals']}\n"
+        f"Удалено из daily_tasks: {db_stats['daily_tasks']}\n"
+        f"Удалено из reports: {db_stats['reports']}\n"
+        f"Удалено из daily_reports: {db_stats['daily_reports']}\n"
+        f"Удалено из daily_report_votes: {db_stats['daily_report_votes']}\n"
+        f"Удалено из scores: {db_stats['scores']}\n"
+        f"Удалено из daily_statuses: {db_stats['daily_statuses']}\n"
         f"Удалено из users: {db_stats['users']}\n"
         f"Удалено Redis-ключей: {redis_deleted}"
     )

@@ -281,10 +281,114 @@ async def reset_user_data(telegram_id: int) -> Dict[str, int]:
     """Delete all database rows for a user across quiz and club tables."""
     stats = {
         "quiz_data": 0,
+        "daily_report_votes": 0,
+        "daily_reports": 0,
+        "reports": 0,
+        "daily_tasks": 0,
+        "daily_statuses": 0,
+        "scores": 0,
+        "goals": 0,
         "users": 0,
     }
     try:
         sb = get_supabase()
+
+        club_user = await get_club_user(telegram_id)
+        club_user_id = (club_user or {}).get("id")
+
+        if club_user_id:
+            goal_rows = (
+                sb.table("goals")
+                .select("id")
+                .eq("user_id", club_user_id)
+                .execute()
+            ).data or []
+            goal_ids = [row["id"] for row in goal_rows if row.get("id")]
+
+            task_rows = (
+                sb.table("daily_tasks")
+                .select("id")
+                .eq("user_id", club_user_id)
+                .execute()
+            ).data or []
+            task_ids = [row["id"] for row in task_rows if row.get("id")]
+
+            report_rows = (
+                sb.table("reports")
+                .select("id")
+                .eq("user_id", club_user_id)
+                .execute()
+            ).data or []
+            report_ids = [row["id"] for row in report_rows if row.get("id")]
+
+            daily_report_rows = (
+                sb.table("daily_reports")
+                .select("id")
+                .eq("user_id", club_user_id)
+                .execute()
+            ).data or []
+            daily_report_ids = [row["id"] for row in daily_report_rows if row.get("id")]
+
+            for report_id in daily_report_ids:
+                vote_result = (
+                    sb.table("daily_report_votes")
+                    .delete()
+                    .eq("report_id", report_id)
+                    .execute()
+                )
+                stats["daily_report_votes"] += len(vote_result.data or [])
+
+            for report_id in report_ids:
+                report_delete = (
+                    sb.table("reports")
+                    .delete()
+                    .eq("id", report_id)
+                    .execute()
+                )
+                stats["reports"] += len(report_delete.data or [])
+
+            for report_id in daily_report_ids:
+                daily_report_delete = (
+                    sb.table("daily_reports")
+                    .delete()
+                    .eq("id", report_id)
+                    .execute()
+                )
+                stats["daily_reports"] += len(daily_report_delete.data or [])
+
+            for task_id in task_ids:
+                task_delete = (
+                    sb.table("daily_tasks")
+                    .delete()
+                    .eq("id", task_id)
+                    .execute()
+                )
+                stats["daily_tasks"] += len(task_delete.data or [])
+
+            daily_status_delete = (
+                sb.table("daily_statuses")
+                .delete()
+                .eq("user_id", club_user_id)
+                .execute()
+            )
+            stats["daily_statuses"] = len(daily_status_delete.data or [])
+
+            scores_delete = (
+                sb.table("scores")
+                .delete()
+                .eq("user_id", club_user_id)
+                .execute()
+            )
+            stats["scores"] = len(scores_delete.data or [])
+
+            for goal_id in goal_ids:
+                goal_delete = (
+                    sb.table("goals")
+                    .delete()
+                    .eq("id", goal_id)
+                    .execute()
+                )
+                stats["goals"] += len(goal_delete.data or [])
 
         quiz_result = (
             sb.table("quiz_data")
@@ -301,6 +405,7 @@ async def reset_user_data(telegram_id: int) -> Dict[str, int]:
             .execute()
         )
         stats["users"] = len(users_result.data or [])
+        logger.info("Full DB reset completed for %s | stats=%s", telegram_id, stats)
     except Exception as e:
         logger.error(f"Error resetting database data for {telegram_id}: {e}", exc_info=True)
     return stats
