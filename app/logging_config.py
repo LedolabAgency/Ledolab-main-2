@@ -26,6 +26,12 @@ def _setup_logger(name: str = "ledolab") -> Logger:
     logger = logging.getLogger(name)
     logger.setLevel(level)
     logger.propagate = True
+
+    # Suppress noisy transport logs so Railway shows product signals, not raw HTTP chatter.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("postgrest").setLevel(logging.WARNING)
+
     return logger
 
 
