@@ -103,6 +103,7 @@ async def start_goal_flow(query: types.CallbackQuery) -> None:
     if not await _ensure_quiz_for_query(query):
         return
 
+    logger.info("GROUP goal button | user=%s chat=%s", query.from_user.id, query.message.chat.id)
     me = await query.bot.get_me()
     await query.message.answer(
         "Цель на 30 дней задается в личке с ботом.",
@@ -122,6 +123,7 @@ async def open_day_view(query: types.CallbackQuery, state: FSMContext) -> None:
     if not await _ensure_quiz_for_query(query):
         return
 
+    logger.info("GROUP day button | user=%s chat=%s", query.from_user.id, query.message.chat.id)
     me = await query.bot.get_me()
     await query.message.answer(
         "Собрать день лучше в личке, чтобы ничего не терялось и весь рабочий путь был в одном месте 👇",
@@ -184,6 +186,7 @@ async def start_report_flow(query: types.CallbackQuery, state: FSMContext) -> No
     if not await _ensure_quiz_for_query(query):
         return
 
+    logger.info("GROUP report button | user=%s chat=%s", query.from_user.id, query.message.chat.id)
     club_user = await database.ensure_club_user(
         telegram_id=query.from_user.id,
         username=query.from_user.username,
@@ -336,6 +339,7 @@ async def vote_for_report(query: types.CallbackQuery) -> None:
         return
 
     _, vote_type, report_id = query.data.split(":", 2)
+    logger.info("GROUP report vote | user=%s report_id=%s vote=%s", query.from_user.id, report_id, vote_type)
     report_before_vote = await database.get_daily_report_by_id(report_id)
     if not report_before_vote:
         await query.answer("Отчет не найден.", show_alert=True)

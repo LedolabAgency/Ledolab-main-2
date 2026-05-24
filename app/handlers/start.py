@@ -281,6 +281,7 @@ async def _ensure_quiz_and_phone_query(query: types.CallbackQuery) -> bool:
 
 
 async def _enter_goal_flow(message: types.Message, state: FSMContext) -> None:
+    logger.info("GOAL flow open | user=%s chat=%s", message.from_user.id, message.chat.id)
     if await cache.get_data(_goal_lock_key(message.from_user.id)):
         await message.answer(
             "🔒 Твоя цель на 30 дней уже зафиксирована.\n\n"
@@ -296,6 +297,7 @@ async def _enter_goal_flow(message: types.Message, state: FSMContext) -> None:
 
 
 async def _enter_day_launch(message: types.Message, state: FSMContext) -> None:
+    logger.info("DAY flow open | user=%s chat=%s", message.from_user.id, message.chat.id)
     club_user = await database.ensure_club_user(
         telegram_id=message.from_user.id,
         username=message.from_user.username,
@@ -409,6 +411,7 @@ async def _finalize_day_tasks(message: types.Message, actor: types.User, state: 
 
 async def _enter_report_flow(message: types.Message, state: FSMContext, actor: types.User | None = None) -> None:
     actor = actor or message.from_user
+    logger.info("REPORT flow open | user=%s chat=%s", actor.id, message.chat.id)
     club_user = await database.ensure_club_user(
         telegram_id=actor.id,
         username=actor.username,
@@ -489,6 +492,13 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
 
     try:
         start_arg = command.args.strip() if command and command.args else ""
+        logger.info(
+            "START received | user=%s chat=%s type=%s arg=%s",
+            user_id,
+            message.chat.id,
+            message.chat.type,
+            start_arg or "-",
+        )
 
         if message.chat.type != "private":
             me = await message.bot.get_me()
@@ -1049,6 +1059,12 @@ async def send_report_preview(query: types.CallbackQuery, state: FSMContext) -> 
         await query.answer()
         return
 
+    logger.info(
+        "REPORT submitted | user=%s report_id=%s date=%s",
+        query.from_user.id,
+        report["id"],
+        data.get("report_date", _today()),
+    )
     await database.update_tasks_status([entry["task_id"] for entry in entries], "reported")
     group_message = await query.bot.send_message(
         REPORTS_GROUP_ID,
@@ -1172,6 +1188,13 @@ async def show_day_hint(message: types.Message, state: FSMContext) -> None:
 async def cmd_menu(message: types.Message) -> None:
     """Show inline working menu in the group only."""
     try:
+        logger.info(
+            "MENU command | user=%s chat=%s type=%s text=%s",
+            message.from_user.id,
+            message.chat.id,
+            message.chat.type,
+            (message.text or "").strip(),
+        )
         if message.chat.type == "private":
             if await database.has_completed_quiz(message.from_user.id):
                 await message.answer(
@@ -1203,6 +1226,18 @@ async def cmd_menu(message: types.Message) -> None:
     except Exception as e:
         logger.error("Error in /menu: %s", e, exc_info=True)
         await message.answer("Error. Try later.")
+
+
+@router.message(F.text.regexp(r"^/menu(@[A-Za-z0-9_]+)?$"))
+async def cmd_menu_fallback(message: types.Message) -> None:
+    logger.info(
+        "MENU fallback | user=%s chat=%s type=%s text=%s",
+        message.from_user.id,
+        message.chat.id,
+        message.chat.type,
+        (message.text or "").strip(),
+    )
+    await cmd_menu(message)
 
 
 @router.message(Command("reset"))
