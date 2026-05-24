@@ -7,11 +7,16 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List
 from supabase import create_client, Client
 from app.config import SUPABASE_URL, SUPABASE_KEY
+from app import cache
 
 logger = logging.getLogger(__name__)
 
 # Global Supabase client
 supabase_client: Optional[Client] = None
+
+
+def _quiz_done_cache_key(telegram_id: int) -> str:
+    return f"quiz_done:{telegram_id}"
 
 
 def init_supabase() -> Client:
@@ -231,8 +236,13 @@ async def resolve_telegram_id_by_handle_or_id(raw_value: str) -> Optional[int]:
 async def has_completed_quiz(telegram_id: int) -> bool:
     """Check whether the user has completed onboarding in quiz_data."""
     try:
+        cached = await cache.get_data(_quiz_done_cache_key(telegram_id))
+        if cached is not None:
+            return cached == "1"
+
         quiz_profile = await get_user(telegram_id)
         if not quiz_profile:
+            await cache.set_data(_quiz_done_cache_key(telegram_id), "0", ex=300)
             return False
 
         required_fields = [
@@ -244,7 +254,9 @@ async def has_completed_quiz(telegram_id: int) -> bool:
             "paid_participation",
             "phone_number",
         ]
-        return all(bool(quiz_profile.get(field)) for field in required_fields)
+        is_completed = all(bool(quiz_profile.get(field)) for field in required_fields)
+        await cache.set_data(_quiz_done_cache_key(telegram_id), "1" if is_completed else "0", ex=300)
+        return is_completed
     except Exception as e:
         logger.error(f"Error checking quiz completion for {telegram_id}: {e}", exc_info=True)
         return False
@@ -405,6 +417,7 @@ async def reset_user_data(telegram_id: int) -> Dict[str, int]:
             .execute()
         )
         stats["users"] = len(users_result.data or [])
+        await cache.delete_data(_quiz_done_cache_key(telegram_id))
         logger.info("Full DB reset completed for %s | stats=%s", telegram_id, stats)
     except Exception as e:
         logger.error(f"Error resetting database data for {telegram_id}: {e}", exc_info=True)
@@ -468,8 +481,10 @@ async def save_quiz_answers(user_id: int, quiz_data: Dict[str, str]) -> bool:
                 "No existing quiz_data row for %s yet. Deferring insert until phone number is shared.",
                 user_id,
             )
+            await cache.delete_data(_quiz_done_cache_key(user_id))
             return True
 
+        await cache.delete_data(_quiz_done_cache_key(user_id))
         logger.info(f"✅ Quiz answers saved in quiz_data: {user_id}")
         return True
     except Exception as e:
@@ -496,6 +511,7 @@ async def save_phone_number(telegram_id: int, phone_number: str) -> bool:
                 "phone_number": phone_number,
             }).execute()
 
+        await cache.delete_data(_quiz_done_cache_key(telegram_id))
         logger.info("✅ Phone number saved for %s", telegram_id)
         return True
     except Exception as e:
@@ -533,6 +549,7 @@ async def save_onboarding_submission(
             phone_number=phone_number,
         )
 
+        await cache.delete_data(_quiz_done_cache_key(telegram_id))
         logger.info("✅ Full onboarding submission saved for %s", telegram_id)
         return True
     except Exception as e:
@@ -753,8 +770,7 @@ async def update_tasks_status(task_ids: List[str], status: str) -> bool:
         if not task_ids:
             return True
         sb = get_supabase()
-        for task_id in task_ids:
-            sb.table("daily_tasks").update({"status": status}).eq("id", task_id).execute()
+        sb.table("daily_tasks").update({"status": status}).in_("id", task_ids).execute()
         return True
     except Exception as e:
         logger.error(f"Error updating task batch status {task_ids}: {e}", exc_info=True)

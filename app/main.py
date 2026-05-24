@@ -17,6 +17,7 @@ from aiogram.fsm.storage.redis import RedisStorage, DefaultKeyBuilder
 
 from app.config import BOT_TOKEN, SENTRY_DSN
 from app.logging_config import logger
+from app.middlewares.throttle import ThrottleMiddleware
 from app import database, cache
 from app.handlers import start_router, quiz_router, callbacks_router, club_router
 
@@ -87,6 +88,9 @@ async def main() -> None:
     )
     
     dp = Dispatcher(storage=storage)
+    throttle = ThrottleMiddleware()
+    dp.message.outer_middleware(throttle)
+    dp.callback_query.outer_middleware(throttle)
     
     # Register routers
     dp.include_router(start_router)

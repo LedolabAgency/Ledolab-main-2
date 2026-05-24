@@ -13,11 +13,18 @@ def _getenv(name: str, default: Optional[str] = None) -> Optional[str]:
     return os.getenv(name, default)
 
 
+def _require(name: str) -> str:
+    value = os.getenv(name)
+    if not value:
+        raise RuntimeError(f"Missing required env var: {name}")
+    return value
+
+
 # Основні
-BOT_TOKEN: Optional[str] = _getenv("BOT_TOKEN")
-REDIS_URL: Optional[str] = _getenv("REDIS_URL")
-SUPABASE_URL: Optional[str] = _getenv("SUPABASE_URL")
-SUPABASE_KEY: Optional[str] = _getenv("SUPABASE_KEY")
+BOT_TOKEN: str = _require("BOT_TOKEN")
+REDIS_URL: str = _require("REDIS_URL")
+SUPABASE_URL: str = _require("SUPABASE_URL")
+SUPABASE_KEY: str = _require("SUPABASE_KEY")
 WEB_APP_URL: str = _getenv("WEB_APP_URL", "https://example.com")
 CLUB_GROUP_URL: Optional[str] = _getenv("CLUB_GROUP_URL")
 
@@ -31,6 +38,7 @@ REPORT_SCORE: int = int(_getenv("REPORT_SCORE", "5") or 5)
 VIDEO_PROOF_SCORE: int = int(_getenv("VIDEO_PROOF_SCORE", "2") or 2)
 GOAL_SCORE: int = int(_getenv("GOAL_SCORE", "3") or 3)
 FAIL_DAY_SCORE: int = int(_getenv("FAIL_DAY_SCORE", "-3") or -3)
+THROTTLE_SECONDS: int = int(_getenv("THROTTLE_SECONDS", "1") or 1)
 
 # Список адмінів (comma-separated в ENV)
 def _parse_admins(raw: Optional[str]) -> List[int]:
@@ -67,5 +75,6 @@ __all__ = [
     "VIDEO_PROOF_SCORE",
     "GOAL_SCORE",
     "FAIL_DAY_SCORE",
+    "THROTTLE_SECONDS",
     "ADMIN_IDS",
 ]
