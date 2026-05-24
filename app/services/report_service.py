@@ -1,99 +1,200 @@
 """
-Service layer for daily report submission and scoring.
+Service layer for daily report submission, public moderation, and admin review.
 """
 
+from __future__ import annotations
+
 import logging
-from typing import Optional, Dict, Any
 from datetime import datetime
-from app import database, cache, config
+from typing import Any, Dict, List, Optional
+
+from aiogram import types
+
+from app import database
 
 logger = logging.getLogger(__name__)
 
+DAILY_REPORT_SCORE = 30
+SUSPICIOUS_FLAGS_THRESHOLD = 3
 
-async def submit_report(
+
+def report_task_prompt(task_number: int, task_text: str) -> str:
+    return (
+        f"📌 Задача {task_number}\n"
+        f"{task_text}\n\n"
+        "Теперь пришли доказательство по этой задаче.\n"
+        "Лучше всего — кружок или видео с записью экрана.\n"
+        "Если нужно, можно добавить фото."
+    )
+
+
+def report_intro_text(task_texts: List[str]) -> str:
+    lines = [
+        "📤 Давай спокойно сдадим отчет за сегодня.\n",
+        "Вот твои задачи на день:",
+    ]
+    for idx, task in enumerate(task_texts, 1):
+        lines.append(f"{idx}. {task}")
+    lines.extend(
+        [
+            "",
+            "Сейчас пойдем по ним по очереди.",
+            "На каждую задачу нужен пруф, чтобы отчет был честным и сильным.",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def task_proof_saved_keyboard(is_last: bool) -> types.InlineKeyboardMarkup:
+    buttons = []
+    if not is_last:
+        buttons.append([types.InlineKeyboardButton(text="✅ Завершить и продолжить", callback_data="report_task_done")])
+    else:
+        buttons.append([types.InlineKeyboardButton(text="✅ Завершить задачу", callback_data="report_task_done")])
+    buttons.append([types.InlineKeyboardButton(text="💬 Добавить комментарий", callback_data="report_task_comment")])
+    return types.InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def task_comment_skip_keyboard() -> types.InlineKeyboardMarkup:
+    return types.InlineKeyboardMarkup(
+        inline_keyboard=[[types.InlineKeyboardButton(text="⏭ Пропустить комментарий", callback_data="report_skip_comment")]]
+    )
+
+
+def report_preview_keyboard() -> types.InlineKeyboardMarkup:
+    return types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [types.InlineKeyboardButton(text="✅ Отправить отчет", callback_data="report_send")],
+            [types.InlineKeyboardButton(text="✏️ Переделать отчет", callback_data="report_redo")],
+        ]
+    )
+
+
+def group_report_vote_keyboard(report_id: str, ok_count: int = 0, flag_count: int = 0) -> types.InlineKeyboardMarkup:
+    return types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                types.InlineKeyboardButton(text=f"👍 Норм ({ok_count})", callback_data=f"report_vote:ok:{report_id}"),
+                types.InlineKeyboardButton(text=f"❗️ Сомнительно ({flag_count})", callback_data=f"report_vote:flag:{report_id}"),
+            ]
+        ]
+    )
+
+
+def admin_review_keyboard(report_id: str) -> types.InlineKeyboardMarkup:
+    return types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [types.InlineKeyboardButton(text="✅ Подтвердить отчет", callback_data=f"admin_report:approve:{report_id}")],
+            [types.InlineKeyboardButton(text="⚠️ Сомнительно", callback_data=f"admin_report:reject:{report_id}")],
+            [types.InlineKeyboardButton(text="💬 Вернуть с комментарием", callback_data=f"admin_report:comment:{report_id}")],
+        ]
+    )
+
+
+def redo_report_keyboard(report_id: str) -> types.InlineKeyboardMarkup:
+    return types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [types.InlineKeyboardButton(text="🔁 Переделать отчет", callback_data=f"user_report:redo:{report_id}")],
+            [types.InlineKeyboardButton(text="🚫 Забить болт", callback_data=f"user_report:drop:{report_id}")],
+        ]
+    )
+
+
+def render_report_preview(entries: List[Dict[str, Any]]) -> str:
+    lines = ["Проверь свой отчет перед отправкой:\n"]
+    for idx, entry in enumerate(entries, 1):
+        lines.append(f"Задача {idx}: {entry['task_text']}")
+        lines.append(f"Пруф: {entry['proof_type']}")
+        comment = (entry.get("comment_text") or "").strip()
+        if comment:
+            lines.append(f"Комментарий: {comment}")
+        lines.append("")
+    lines.append("Если все ок — отправляй.")
+    return "\n".join(lines)
+
+
+def build_group_summary(username: Optional[str], entries: List[Dict[str, Any]]) -> str:
+    author = f"@{username}" if username else "Участник клуба"
+    lines = [f"{author}\n", "📤 Отчет за день:\n"]
+    for idx, entry in enumerate(entries, 1):
+        lines.append(f"{idx}. {entry['task_text']}")
+        comment = (entry.get("comment_text") or "").strip()
+        if comment:
+            lines.append(f"   💬 {comment}")
+    lines.append("")
+    lines.append("Отчет отправлен в клуб.")
+    return "\n".join(lines)
+
+
+def build_admin_summary(user_label: str, goal_text: str, entries: List[Dict[str, Any]], flags: int) -> str:
+    lines = [
+        "⚠️ Нужен ручной чек отчета\n",
+        f"Участник: {user_label}",
+    ]
+    if goal_text:
+        lines.append(f"Цель: {goal_text}")
+    lines.append(f"Флаги: {flags}\n")
+    for idx, entry in enumerate(entries, 1):
+        lines.append(f"{idx}. {entry['task_text']}")
+        comment = (entry.get("comment_text") or "").strip()
+        if comment:
+            lines.append(f"   💬 {comment}")
+    return "\n".join(lines)
+
+
+def build_admin_approved_summary(original_text: str) -> str:
+    return original_text + "\n\n✅ Отчет проверен админом — все ок."
+
+
+async def save_daily_report(
     user_id: str,
-    task_id: str,
-    report_text: str,
-    completed_tasks: int = 0,
-    proof_type: Optional[str] = None,
-    file_id: Optional[str] = None,
+    username: Optional[str],
+    report_date: str,
+    entries: List[Dict[str, Any]],
 ) -> Optional[Dict[str, Any]]:
-    """
-    Submit daily report and calculate score.
-    
-    Args:
-        user_id: User database ID
-        task_id: Associated task ID
-        report_text: Report content
-        proof_type: Type of proof (text/video)
-        file_id: Telegram file ID if applicable
-        
-    Returns:
-        Report data with awarded score
-    """
+    """Persist and immediately award the base daily score."""
     try:
-        # Create report
-        report = await database.create_report(
+        tasks_snapshot = [entry["task_text"] for entry in entries]
+        summary_text = build_group_summary(username, entries)
+        report = await database.create_or_update_daily_report(
             user_id=user_id,
-            task_id=task_id,
-            report_text=report_text,
-            proof_type=proof_type,
-            file_id=file_id,
+            report_date=report_date,
+            tasks_snapshot=tasks_snapshot,
+            report_payload=entries,
+            summary_text=summary_text,
+            score_awarded=DAILY_REPORT_SCORE,
+            status="approved",
         )
-        
         if not report:
             return None
-        
-        total_score = max(0, completed_tasks) * 10
-        if completed_tasks >= 3:
-            total_score += 10
-        if proof_type == "video":
-            reason = f"Daily report submitted with proof ({completed_tasks}/3)"
-        else:
-            reason = f"Daily report submitted ({completed_tasks}/3)"
-        
-        # Award score
-        await database.award_score(user_id, total_score, reason)
-        
-        logger.info(f"✅ Report submitted: {user_id} +{total_score}")
-        
-        return {
-            **report,
-            "score_awarded": total_score,
-            "completed_tasks": completed_tasks,
-        }
+        await database.award_score(user_id, DAILY_REPORT_SCORE, "Daily report submitted")
+        return report
     except Exception as e:
-        logger.error(f"Error submitting report {user_id}: {e}", exc_info=True)
+        logger.error(f"Error saving daily report {user_id}: {e}", exc_info=True)
         return None
 
 
-async def report_summary_text(
-    username: Optional[str],
-    task_text: str,
-    report_text: str,
-    score: int,
-) -> str:
-    """
-    Generate public report text for group.
-    
-    Args:
-        username: Telegram username
-        task_text: Original task
-        report_text: Report content
-        score: Score awarded
-        
-    Returns:
-        Formatted report text
-    """
-    user_mention = f"@{username}" if username else "Участник"
-    
-    return (
-        f"🔥 Отчет предпринимателя\n\n"
-        f"👤 Участник: {user_mention}\n\n"
-        f"🎯 Задача дня:\n"
-        f"{task_text}\n\n"
-        f"✅ Результат:\n"
-        f"{report_text}\n\n"
-        f"⚡ +{score} Business Score\n\n"
-        f"Движение зафиксировано."
-    )
+async def vote_on_report(report_id: str, voter_telegram_id: int, vote_type: str) -> Optional[Dict[str, Any]]:
+    """Register a report vote and update flags if needed."""
+    try:
+        saved = await database.add_daily_report_vote(report_id, voter_telegram_id, vote_type)
+        if not saved:
+            return None
+
+        ok_count = await database.count_daily_report_votes(report_id, "ok")
+        flag_count = await database.count_daily_report_votes(report_id, "flag")
+        report = await database.get_daily_report_by_id(report_id)
+        if not report:
+            return None
+
+        await database.update_daily_report_flags(report_id, flag_count)
+        if flag_count >= SUSPICIOUS_FLAGS_THRESHOLD:
+            await database.set_daily_report_status(report_id, "suspicious")
+            report["status"] = "suspicious"
+
+        report["ok_count"] = ok_count
+        report["flag_count"] = flag_count
+        return report
+    except Exception as e:
+        logger.error(f"Error voting on report {report_id}: {e}", exc_info=True)
+        return None

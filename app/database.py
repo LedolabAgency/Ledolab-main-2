@@ -3,6 +3,7 @@ Supabase database client and utilities.
 """
 
 import logging
+from datetime import datetime
 from typing import Optional, Dict, Any, List
 from supabase import create_client, Client
 from app.config import SUPABASE_URL, SUPABASE_KEY
@@ -118,6 +119,25 @@ async def get_club_user(telegram_id: int) -> Optional[Dict[str, Any]]:
         return None
     except Exception as e:
         logger.error(f"Error getting club user {telegram_id}: {e}", exc_info=True)
+        return None
+
+
+async def get_club_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
+    """Get a club user record by internal users.id."""
+    try:
+        sb = get_supabase()
+        result = (
+            sb.table("users")
+            .select("*")
+            .eq("id", user_id)
+            .limit(1)
+            .execute()
+        )
+        if result.data:
+            return result.data[0]
+        return None
+    except Exception as e:
+        logger.error(f"Error getting club user by id {user_id}: {e}", exc_info=True)
         return None
 
 
@@ -673,6 +693,192 @@ async def create_report(
         return None
     except Exception as e:
         logger.error(f"Error creating report {user_id}: {e}", exc_info=True)
+        return None
+
+
+async def get_daily_report(user_id: str, report_date: str) -> Optional[Dict[str, Any]]:
+    """Fetch the daily report record for a user and date."""
+    try:
+        sb = get_supabase()
+        result = (
+            sb.table("daily_reports")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("report_date", report_date)
+            .limit(1)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+    except Exception as e:
+        logger.error(f"Error getting daily report {user_id} {report_date}: {e}", exc_info=True)
+        return None
+
+
+async def get_daily_report_by_id(report_id: str) -> Optional[Dict[str, Any]]:
+    """Fetch a daily report by id."""
+    try:
+        sb = get_supabase()
+        result = sb.table("daily_reports").select("*").eq("id", report_id).limit(1).execute()
+        return result.data[0] if result.data else None
+    except Exception as e:
+        logger.error(f"Error getting daily report by id {report_id}: {e}", exc_info=True)
+        return None
+
+
+async def create_or_update_daily_report(
+    user_id: str,
+    report_date: str,
+    tasks_snapshot: List[str],
+    report_payload: List[Dict[str, Any]],
+    summary_text: str,
+    score_awarded: int,
+    status: str = "approved",
+) -> Optional[Dict[str, Any]]:
+    """Create or update a single daily report summary for the user."""
+    try:
+        sb = get_supabase()
+        payload = {
+            "user_id": user_id,
+            "report_date": report_date,
+            "tasks_snapshot": tasks_snapshot,
+            "report_payload": report_payload,
+            "summary_text": summary_text,
+            "status": status,
+            "score_awarded": score_awarded,
+            "flags": 0,
+            "group_message_id": None,
+            "group_chat_id": None,
+            "admin_comment": None,
+        }
+        existing = await get_daily_report(user_id, report_date)
+        if existing:
+            sb.table("daily_report_votes").delete().eq("report_id", existing["id"]).execute()
+            result = (
+                sb.table("daily_reports")
+                .update(payload)
+                .eq("id", existing["id"])
+                .execute()
+            )
+        else:
+            result = sb.table("daily_reports").insert(payload).execute()
+        return result.data[0] if result.data else None
+    except Exception as e:
+        logger.error(f"Error creating/updating daily report {user_id} {report_date}: {e}", exc_info=True)
+        return None
+
+
+async def set_daily_report_group_post(report_id: str, chat_id: int, message_id: int) -> bool:
+    """Save the Telegram group message reference for a daily report."""
+    try:
+        sb = get_supabase()
+        sb.table("daily_reports").update({
+            "group_chat_id": chat_id,
+            "group_message_id": message_id,
+        }).eq("id", report_id).execute()
+        return True
+    except Exception as e:
+        logger.error(f"Error saving report group post {report_id}: {e}", exc_info=True)
+        return False
+
+
+async def add_daily_report_vote(report_id: str, voter_telegram_id: int, vote_type: str) -> bool:
+    """Record a single unique vote for a daily report."""
+    try:
+        sb = get_supabase()
+        existing = (
+            sb.table("daily_report_votes")
+            .select("id")
+            .eq("report_id", report_id)
+            .eq("voter_telegram_id", voter_telegram_id)
+            .limit(1)
+            .execute()
+        )
+        if existing.data:
+            return False
+        sb.table("daily_report_votes").insert({
+            "report_id": report_id,
+            "voter_telegram_id": voter_telegram_id,
+            "vote_type": vote_type,
+        }).execute()
+        return True
+    except Exception as e:
+        logger.error(f"Error adding daily report vote {report_id}: {e}", exc_info=True)
+        return False
+
+
+async def count_daily_report_votes(report_id: str, vote_type: str) -> int:
+    """Count votes of a given type for a report."""
+    try:
+        sb = get_supabase()
+        result = (
+            sb.table("daily_report_votes")
+            .select("id")
+            .eq("report_id", report_id)
+            .eq("vote_type", vote_type)
+            .execute()
+        )
+        return len(result.data or [])
+    except Exception as e:
+        logger.error(f"Error counting report votes {report_id}: {e}", exc_info=True)
+        return 0
+
+
+async def update_daily_report_flags(report_id: str, flags: int) -> bool:
+    """Update flags counter for a daily report."""
+    try:
+        sb = get_supabase()
+        sb.table("daily_reports").update({"flags": flags}).eq("id", report_id).execute()
+        return True
+    except Exception as e:
+        logger.error(f"Error updating report flags {report_id}: {e}", exc_info=True)
+        return False
+
+
+async def set_daily_report_status(report_id: str, status: str, admin_comment: Optional[str] = None) -> bool:
+    """Update report status and optional admin comment."""
+    try:
+        payload: Dict[str, Any] = {
+            "status": status,
+            "reviewed_at": datetime.utcnow().isoformat(),
+        }
+        if admin_comment is not None:
+            payload["admin_comment"] = admin_comment
+        sb = get_supabase()
+        sb.table("daily_reports").update(payload).eq("id", report_id).execute()
+        return True
+    except Exception as e:
+        logger.error(f"Error setting daily report status {report_id}: {e}", exc_info=True)
+        return False
+
+
+async def update_daily_report_summary_text(report_id: str, summary_text: str) -> bool:
+    """Update summary text after admin decision if needed."""
+    try:
+        sb = get_supabase()
+        sb.table("daily_reports").update({"summary_text": summary_text}).eq("id", report_id).execute()
+        return True
+    except Exception as e:
+        logger.error(f"Error updating report summary {report_id}: {e}", exc_info=True)
+        return False
+
+
+async def increment_user_warnings(user_id: str, amount: int = 1) -> Optional[Dict[str, Any]]:
+    """Increase warnings counter and auto-ban at 3 or more warnings."""
+    try:
+        sb = get_supabase()
+        result = sb.table("users").select("id,warnings_count,is_banned").eq("id", user_id).limit(1).execute()
+        if not result.data:
+            return None
+        current = result.data[0]
+        warnings_count = int(current.get("warnings_count") or 0) + amount
+        payload = {
+            "warnings_count": warnings_count,
+            "is_banned": warnings_count >= 3,
+        }
+        updated = sb.table("users").update(payload).eq("id", user_id).execute()
+        return updated.data[0] if updated.data else {**current, **payload}
+    except Exception as e:
+        logger.error(f"Error incrementing warnings {user_id}: {e}", exc_info=True)
         return None
 
 

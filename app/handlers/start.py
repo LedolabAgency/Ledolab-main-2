@@ -28,7 +28,8 @@ from app.keyboards.inline.start import (
     quiz_reply_keyboard,
     return_to_group_keyboard,
 )
-from app.states.quiz import GoalStates, TaskStates
+from app.services import report_service
+from app.states.quiz import GoalStates, ReportStates, TaskStates
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -406,6 +407,81 @@ async def _finalize_day_tasks(message: types.Message, actor: types.User, state: 
     await state.clear()
 
 
+async def _enter_report_flow(message: types.Message, state: FSMContext, actor: types.User | None = None) -> None:
+    actor = actor or message.from_user
+    club_user = await database.ensure_club_user(
+        telegram_id=actor.id,
+        username=actor.username,
+        first_name=actor.first_name,
+        language_code=actor.language_code or "ru",
+    )
+    if not club_user:
+        await message.answer("Не удалось подготовить твой профиль. Попробуй позже.")
+        return
+
+    today = _today()
+    tasks = await database.get_today_tasks(club_user["id"], today)
+    if not tasks:
+        await message.answer(
+            "Сначала собери день через кнопку `📅 Мой день (до 3х задач)`.",
+            reply_markup=club_group_keyboard(CLUB_GROUP_URL),
+        )
+        return
+
+    if datetime.now().hour >= 22:
+        await message.answer(
+            "⏰ Сейчас лучше как раз заняться отчетом.\n\n"
+            "Я проведу тебя по задачам по одной, чтобы ничего не потерялось."
+        )
+
+    existing_report = await database.get_daily_report(club_user["id"], today)
+    if existing_report and existing_report.get("status") not in {"redo_requested", "rejected"}:
+        await message.answer(
+            "📤 За сегодня отчет уже был отправлен.\n\n"
+            "Если админ попросит переделать, я отдельно дам тебе новый вход.",
+            reply_markup=return_to_group_keyboard(CLUB_GROUP_URL),
+        )
+        return
+
+    task_payload = [{"id": task["id"], "task_text": task["task_text"]} for task in tasks]
+    await state.clear()
+    await state.update_data(
+        report_date=today,
+        report_task_index=0,
+        report_tasks=task_payload,
+        report_entries=[],
+    )
+    await state.set_state(ReportStates.waiting_proof)
+    await message.answer(report_service.report_intro_text([task["task_text"] for task in tasks]))
+    await message.answer(
+        report_service.report_task_prompt(1, task_payload[0]["task_text"]),
+        reply_markup=return_to_group_keyboard(CLUB_GROUP_URL),
+    )
+
+
+async def _advance_report_or_review(target_message: types.Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    task_index = int(data.get("report_task_index", 0))
+    tasks = data.get("report_tasks", [])
+    next_index = task_index + 1
+
+    if next_index >= len(tasks):
+        await state.set_state(ReportStates.reviewing)
+        await target_message.answer(
+            report_service.render_report_preview(data.get("report_entries", [])),
+            reply_markup=report_service.report_preview_keyboard(),
+        )
+        return
+
+    await state.update_data(report_task_index=next_index)
+    await state.set_state(ReportStates.waiting_proof)
+    next_task = tasks[next_index]
+    await target_message.answer(
+        report_service.report_task_prompt(next_index + 1, next_task["task_text"]),
+        reply_markup=return_to_group_keyboard(CLUB_GROUP_URL),
+    )
+
+
 @router.message(CommandStart())
 async def cmd_start(message: types.Message, state: FSMContext, command: CommandObject | None = None) -> None:
     """Handle /start in private and group chats."""
@@ -444,6 +520,12 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
             if not await _ensure_quiz_and_phone_message(message):
                 return
             await _enter_day_launch(message, state)
+            return
+
+        if start_arg == "report_setup":
+            if not await _ensure_quiz_and_phone_message(message):
+                return
+            await _enter_report_flow(message, state)
             return
 
         if has_quiz:
@@ -791,6 +873,231 @@ async def skip_remaining_day_tasks(query: types.CallbackQuery, state: FSMContext
         return
 
     await _finalize_day_tasks(query.message, query.from_user, state)
+    await query.answer()
+
+
+@router.message(ReportStates.waiting_proof, F.video | F.video_note | F.photo)
+async def capture_report_proof(message: types.Message, state: FSMContext) -> None:
+    if message.chat.type != "private":
+        await state.clear()
+        return
+    if not await _ensure_quiz_and_phone_message(message):
+        await state.clear()
+        return
+
+    data = await state.get_data()
+    task_index = int(data.get("report_task_index", 0))
+    tasks = data.get("report_tasks", [])
+    if task_index >= len(tasks):
+        await state.clear()
+        await message.answer("Не смог понять, для какой задачи пришел пруф. Давай зайдем в отчет заново.")
+        return
+
+    current_task = tasks[task_index]
+    proof_type = "photo"
+    file_id = None
+    if message.video_note:
+        proof_type = "video_note"
+        file_id = message.video_note.file_id
+    elif message.video:
+        proof_type = "video"
+        file_id = message.video.file_id
+    elif message.photo:
+        proof_type = "photo"
+        file_id = message.photo[-1].file_id
+
+    entries = list(data.get("report_entries", []))
+    entry = {
+        "task_id": current_task["id"],
+        "task_text": current_task["task_text"],
+        "proof_type": proof_type,
+        "file_id": file_id,
+        "comment_text": (message.caption or "").strip(),
+    }
+    if len(entries) > task_index:
+        entries[task_index] = entry
+    else:
+        entries.append(entry)
+    await state.update_data(report_entries=entries)
+
+    is_last = task_index == len(tasks) - 1
+    await message.answer(
+        "Пруф по задаче принят.\n\n"
+        "Если хочешь, можешь добавить короткий комментарий. Если все ок — завершаем задачу и идем дальше.",
+        reply_markup=report_service.task_proof_saved_keyboard(is_last),
+    )
+
+
+@router.message(ReportStates.waiting_proof)
+async def reject_report_without_proof(message: types.Message) -> None:
+    await message.answer(
+        "Нужен именно пруф по задаче: кружок, видео или фото.\n"
+        "Обычный текст без доказательства я в отчет не приму."
+    )
+
+
+@router.callback_query(ReportStates.waiting_proof, F.data == "report_task_comment")
+async def report_task_comment(query: types.CallbackQuery, state: FSMContext) -> None:
+    if query.message.chat.type != "private":
+        await query.answer("Этот шаг доступен только в личке.", show_alert=True)
+        return
+    await state.set_state(ReportStates.waiting_task_comment)
+    await query.message.answer(
+        "Коротко подпиши, что именно ты сделал по этой задаче 👇",
+        reply_markup=report_service.task_comment_skip_keyboard(),
+    )
+    await query.answer()
+
+
+@router.message(ReportStates.waiting_task_comment)
+async def save_report_task_comment(message: types.Message, state: FSMContext) -> None:
+    if message.chat.type != "private":
+        await state.clear()
+        return
+
+    data = await state.get_data()
+    task_index = int(data.get("report_task_index", 0))
+    entries = list(data.get("report_entries", []))
+    if task_index >= len(entries):
+        await state.clear()
+        await message.answer("Не нашел задачу для комментария. Давай начнем отчет заново.")
+        return
+
+    entries[task_index]["comment_text"] = (message.text or "").strip()
+    await state.update_data(report_entries=entries)
+    await _advance_report_or_review(message, state)
+
+
+@router.callback_query(ReportStates.waiting_task_comment, F.data == "report_skip_comment")
+async def skip_report_task_comment(query: types.CallbackQuery, state: FSMContext) -> None:
+    if query.message.chat.type != "private":
+        await query.answer("Этот шаг доступен только в личке.", show_alert=True)
+        return
+    await _advance_report_or_review(query.message, state)
+    await query.answer()
+
+
+@router.callback_query(ReportStates.waiting_proof, F.data == "report_task_done")
+async def report_task_done(query: types.CallbackQuery, state: FSMContext) -> None:
+    if query.message.chat.type != "private":
+        await query.answer("Этот шаг доступен только в личке.", show_alert=True)
+        return
+    await _advance_report_or_review(query.message, state)
+    await query.answer()
+
+
+@router.callback_query(ReportStates.reviewing, F.data == "report_redo")
+async def redo_report_preview(query: types.CallbackQuery, state: FSMContext) -> None:
+    if query.message.chat.type != "private":
+        await query.answer("Этот шаг доступен только в личке.", show_alert=True)
+        return
+    data = await state.get_data()
+    tasks = data.get("report_tasks", [])
+    await state.update_data(report_entries=[], report_task_index=0)
+    await state.set_state(ReportStates.waiting_proof)
+    await query.message.answer("Ок, собираем отчет заново шаг за шагом.")
+    if tasks:
+        await query.message.answer(
+            report_service.report_task_prompt(1, tasks[0]["task_text"]),
+            reply_markup=return_to_group_keyboard(CLUB_GROUP_URL),
+        )
+    await query.answer()
+
+
+@router.callback_query(ReportStates.reviewing, F.data == "report_send")
+async def send_report_preview(query: types.CallbackQuery, state: FSMContext) -> None:
+    if query.message.chat.type != "private":
+        await query.answer("Этот шаг доступен только в личке.", show_alert=True)
+        return
+    if not await _ensure_quiz_and_phone_query(query):
+        await state.clear()
+        return
+
+    club_user = await database.ensure_club_user(
+        telegram_id=query.from_user.id,
+        username=query.from_user.username,
+        first_name=query.from_user.first_name,
+        language_code=query.from_user.language_code or "ru",
+    )
+    if not club_user:
+        await query.message.answer("Не удалось сохранить отчет. Попробуй позже.")
+        await state.clear()
+        await query.answer()
+        return
+
+    if not REPORTS_GROUP_ID:
+        await query.message.answer("Не настроена группа для публикации отчетов. Сначала пропиши REPORTS_GROUP_ID.")
+        await query.answer()
+        return
+
+    data = await state.get_data()
+    entries = data.get("report_entries", [])
+    if not entries:
+        await query.message.answer("В отчете пока нет ни одного доказательства. Сначала собери его.")
+        await query.answer()
+        return
+
+    report = await report_service.save_daily_report(
+        user_id=club_user["id"],
+        username=query.from_user.username,
+        report_date=data.get("report_date", _today()),
+        entries=entries,
+    )
+    if not report:
+        await query.message.answer("Не удалось сохранить отчет. Попробуй еще раз.")
+        await state.clear()
+        await query.answer()
+        return
+
+    await database.update_tasks_status([entry["task_id"] for entry in entries], "reported")
+    group_message = await query.bot.send_message(
+        REPORTS_GROUP_ID,
+        report["summary_text"],
+        reply_markup=report_service.group_report_vote_keyboard(report["id"]),
+    )
+    await database.set_daily_report_group_post(report["id"], REPORTS_GROUP_ID, group_message.message_id)
+
+    await query.message.answer(
+        "🔥 Отчет отправлен.\n\n"
+        "Баллы уже начислены: +30.\n"
+        "Теперь отчет живет в группе. Если клуб сочтет его сомнительным, я сам подключу админа.",
+        reply_markup=return_to_group_keyboard(CLUB_GROUP_URL),
+    )
+    await state.clear()
+    await query.answer()
+
+
+@router.callback_query(F.data.startswith("user_report:redo:"))
+async def redo_report_after_admin_comment(query: types.CallbackQuery, state: FSMContext) -> None:
+    if query.message.chat.type != "private":
+        await query.answer("Этот шаг доступен только в личке.", show_alert=True)
+        return
+    if not await _ensure_quiz_and_phone_query(query):
+        return
+
+    await query.message.answer(
+        "Ок, переделываем отчет с нуля.\n\n"
+        "Я снова проведу тебя по задачам по одной, чтобы ничего не потерялось."
+    )
+    await _enter_report_flow(query.message, state, query.from_user)
+    await query.answer()
+
+
+@router.callback_query(F.data.startswith("user_report:drop:"))
+async def drop_report_after_admin_comment(query: types.CallbackQuery) -> None:
+    if query.message.chat.type != "private":
+        await query.answer("Этот шаг доступен только в личке.", show_alert=True)
+        return
+
+    report_id = query.data.split(":", 2)[2]
+    await database.set_daily_report_status(report_id, "dropped")
+    await query.message.answer(
+        "Принял.\n\n"
+        "Сегодня этот отчет закрыт без пересдачи.\n"
+        "Завтра будет новый день и новый шанс показать нормальную дисциплину.\n\n"
+        "Важно: такие истории копятся и могут закончиться вылетом из клуба.",
+        reply_markup=return_to_group_keyboard(CLUB_GROUP_URL),
+    )
     await query.answer()
 
 

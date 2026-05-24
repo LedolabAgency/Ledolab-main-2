@@ -46,5 +46,8 @@ class ReportStates(StatesGroup):
     waiting_completed_count = State()
     waiting_report_text = State()
     waiting_proof = State()
+    waiting_task_comment = State()
+    reviewing = State()
+    waiting_admin_comment = State()
     proof_submitted = State()
     completed = State()

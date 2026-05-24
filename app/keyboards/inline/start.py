@@ -193,7 +193,10 @@ def club_main_menu(bot_username: str | None = None) -> types.InlineKeyboardMarku
             text="📅 Мой день (до 3х задач)",
             url=f"https://t.me/{bot_username}?start=day_setup",
         )
-        report_button = types.InlineKeyboardButton(text="📤 Сдать отчет", callback_data="report_submit")
+        report_button = types.InlineKeyboardButton(
+            text="📤 Сдать отчет",
+            url=f"https://t.me/{bot_username}?start=report_setup",
+        )
         rating_button = types.InlineKeyboardButton(text="🏆 Рейтинг", callback_data="rating_view")
         rules_button = types.InlineKeyboardButton(text="📘 Как работает клуб", callback_data="rules_view")
     else:
