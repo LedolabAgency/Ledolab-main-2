@@ -11,18 +11,21 @@ from app.config import LOG_LEVEL
 
 def _setup_logger(name: str = "ledolab") -> Logger:
     level = getattr(logging, LOG_LEVEL, logging.INFO)
+    fmt = logging.Formatter(
+        "%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level)
+    if not root_logger.handlers:
+        root_handler = logging.StreamHandler(stream=sys.stdout)
+        root_handler.setFormatter(fmt)
+        root_logger.addHandler(root_handler)
+
     logger = logging.getLogger(name)
     logger.setLevel(level)
-
-    if not logger.handlers:
-        fmt = logging.Formatter(
-            "%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
-        handler = logging.StreamHandler(stream=sys.stdout)
-        handler.setFormatter(fmt)
-        logger.addHandler(handler)
-
+    logger.propagate = True
     return logger
 
 

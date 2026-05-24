@@ -16,7 +16,7 @@ from app.config import (
     CLUB_GROUP_URL,
     REPORTS_GROUP_ID,
 )
-from app.keyboards.inline.start import club_group_keyboard, club_main_menu, open_private_flow_keyboard, report_count_keyboard
+from app.keyboards.inline.start import club_group_keyboard, club_main_menu, open_private_flow_keyboard
 from app.services import rating_service, report_service, task_service
 from app.states.quiz import ReportStates, TaskStates
 
@@ -187,134 +187,18 @@ async def start_report_flow(query: types.CallbackQuery, state: FSMContext) -> No
         return
 
     logger.info("GROUP report button | user=%s chat=%s", query.from_user.id, query.message.chat.id)
-    club_user = await database.ensure_club_user(
-        telegram_id=query.from_user.id,
-        username=query.from_user.username,
-        first_name=query.from_user.first_name,
-        language_code=query.from_user.language_code or "ru",
-    )
-    if not club_user:
-        await query.message.answer("Не удалось подготовить профиль участника. Попробуй позже.")
-        await query.answer()
-        return
-
-    tasks = await database.get_today_tasks(club_user["id"], _today())
-    if not tasks:
-        await query.message.answer("Сначала собери день через кнопку `📅 Мой день (до 3х задач)`.")
-        await query.answer()
-        return
-
-    lines = ["📤 Что ты сделал сегодня?\n"]
-    for idx, task in enumerate(tasks, 1):
-        lines.append(f"{idx}. {task['task_text']}")
-    await state.set_state(ReportStates.waiting_completed_count)
-    await state.update_data(
-        task_ids=[task["id"] for task in tasks],
-        task_texts=[task["task_text"] for task in tasks],
-    )
-    await query.message.answer("\n".join(lines), reply_markup=report_count_keyboard())
-    await query.answer()
-
-
-@router.callback_query(F.data.startswith("report_count:"))
-async def capture_report_count(query: types.CallbackQuery, state: FSMContext) -> None:
-    if not await _ensure_group_callback(query):
-        return
-    if not await _ensure_quiz_for_query(query):
-        return
-
-    completed_count = int(query.data.split(":", 1)[1])
-    await state.update_data(completed_count=completed_count)
-    await state.set_state(ReportStates.waiting_report_text)
-    await query.message.answer(
-        "Отправь короткий отчет:\n— что сделал\n— какой результат\n— что дальше"
-    )
-    await query.answer()
-
-
-@router.message(ReportStates.waiting_report_text)
-async def save_report_text(message: types.Message, state: FSMContext) -> None:
-    if not await _ensure_group_interaction(message):
-        await state.clear()
-        return
-    if not await _ensure_quiz_for_message(message):
-        await state.clear()
-        return
-
-    await state.update_data(report_text=message.text.strip())
-    await state.set_state(ReportStates.waiting_proof)
-    await message.answer(
-        "Теперь отправь daily proof.\n\nНа MVP можно прислать кружок, видео или короткий текст-подтверждение."
-    )
-
-
-@router.message(ReportStates.waiting_proof, F.video | F.video_note | F.text)
-async def finish_report_flow(message: types.Message, state: FSMContext) -> None:
-    if not await _ensure_group_interaction(message):
-        await state.clear()
-        return
-    if not await _ensure_quiz_for_message(message):
-        await state.clear()
-        return
-
-    me = await message.bot.get_me()
-    data = await state.get_data()
-    club_user = await database.ensure_club_user(
-        telegram_id=message.from_user.id,
-        username=message.from_user.username,
-        first_name=message.from_user.first_name,
-        language_code=message.from_user.language_code or "ru",
-    )
-    if not club_user:
-        await message.answer("Не удалось подготовить профиль участника. Попробуй позже.")
-        await state.clear()
-        return
-
-    proof_type = "text"
-    file_id = None
-    if message.video_note:
-        proof_type = "video"
-        file_id = message.video_note.file_id
-    elif message.video:
-        proof_type = "video"
-        file_id = message.video.file_id
-
-    proof_text = data.get("report_text", "")
-    if message.text and message.text != proof_text:
-        proof_text = f"{proof_text}\n\nProof: {message.text}".strip()
-
-    task_ids = data.get("task_ids", [])
-    report = await report_service.submit_report(
-        user_id=club_user["id"],
-        task_id=task_ids[0],
-        report_text=proof_text,
-        completed_tasks=data.get("completed_count", 0),
-        proof_type=proof_type,
-        file_id=file_id,
-    )
-    if not report:
-        await message.answer("Не удалось сохранить отчет. Попробуй еще раз.")
-        await state.clear()
-        return
-
-    await database.update_tasks_status(task_ids, "reported")
-
-    score = report["score_awarded"]
-    mood = "🔥 Сильный день" if score >= 40 else "🔥 Хороший день" if score >= 20 else "🔥 Движение есть"
-
-    summary = await report_service.report_summary_text(
-        username=message.from_user.username,
-        task_text="\n".join(f"— {item}" for item in data.get("task_texts", [])),
-        report_text=proof_text,
-        score=score,
-    )
-    target_chat_id = REPORTS_GROUP_ID or message.chat.id
-    await message.bot.send_message(target_chat_id, summary)
-    await message.answer(
-        f"Отчет принят.\n\nБаллы начислены: +{score}\n{mood}",
-        reply_markup=club_main_menu(me.username),
-    )
+    me = await query.bot.get_me()
     await state.clear()
+    await query.message.answer(
+        "📤 Отчет сдаем в личке с ботом.\n\n"
+        "Там я спокойно проведу тебя по задачам по одной и соберу все доказательства без каши.",
+        reply_markup=open_private_flow_keyboard(
+            me.username,
+            "report_setup",
+            "ОТКРЫТЬ ОТЧЕТ В ЛИЧКЕ",
+        ),
+    )
+    await query.answer()
 
 
 @router.callback_query(F.data == "rating_view")
