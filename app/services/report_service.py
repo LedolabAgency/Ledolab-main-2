@@ -38,8 +38,10 @@ def report_intro_text(task_texts: List[str]) -> str:
     lines.extend(
         [
             "",
-            "Сейчас пойдем по ним по очереди.",
-            "На каждую задачу нужен пруф, чтобы отчет был честным и сильным.",
+            "Теперь запиши один кружочек с полным отчетом сразу по всем задачам.",
+            "Важно: кружочек в Telegram длится до 1 минуты, поэтому говори коротко и по делу.",
+            "",
+            "После записи я покажу тебе превью и дам выбрать: подтвердить или заменить.",
         ]
     )
     return "\n".join(lines)
@@ -101,26 +103,33 @@ def redo_report_keyboard(report_id: str) -> types.InlineKeyboardMarkup:
 
 
 def render_report_preview(entries: List[Dict[str, Any]]) -> str:
-    lines = ["Проверь свой отчет перед отправкой:\n"]
-    for idx, entry in enumerate(entries, 1):
-        lines.append(f"Задача {idx}: {entry['task_text']}")
-        lines.append(f"Пруф: {entry['proof_type']}")
+    lines = ["Проверь отчет перед отправкой:\n"]
+    if entries:
+        entry = entries[0]
+        lines.append("✅ Кружочек с отчетом записан")
         comment = (entry.get("comment_text") or "").strip()
         if comment:
-            lines.append(f"Комментарий: {comment}")
+            lines.append(f"💬 Комментарий: {comment}")
         lines.append("")
-    lines.append("Если все ок — отправляй.")
+    lines.append("Если все ок — подтверждай.")
     return "\n".join(lines)
 
 
 def build_group_summary(username: Optional[str], entries: List[Dict[str, Any]]) -> str:
     author = f"@{username}" if username else "Участник клуба"
     lines = [f"{author}\n", "📤 Отчет за день:\n"]
-    for idx, entry in enumerate(entries, 1):
-        lines.append(f"{idx}. {entry['task_text']}")
+    if entries:
+        entry = entries[0]
+        task_lines = entry.get("task_lines") or []
+        if task_lines:
+            lines.append("Задачи:")
+            for idx, task in enumerate(task_lines, 1):
+                lines.append(f"{idx}. {task}")
+            lines.append("")
+        lines.append("🎥 Кружочек с отчетом — в сообщении ниже")
         comment = (entry.get("comment_text") or "").strip()
         if comment:
-            lines.append(f"   💬 {comment}")
+            lines.append(f"💬 {comment}")
     lines.append("")
     lines.append("Отчет отправлен в клуб.")
     return "\n".join(lines)
