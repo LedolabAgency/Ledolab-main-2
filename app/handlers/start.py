@@ -554,6 +554,10 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
                     "Здесь я помогаю держать фокус, а основная движуха живет через группу и твой ежедневный ритм.",
                     reply_markup=private_hub_reply_keyboard(),
                 )
+                await message.answer(
+                    "Вернуться в группу можно здесь 👇",
+                    reply_markup=return_to_group_keyboard(CLUB_GROUP_URL),
+                )
             else:
                 await message.answer(
                     "LedoLab Business Club\n\n"
