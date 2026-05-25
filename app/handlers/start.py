@@ -312,15 +312,6 @@ async def _ensure_quiz_and_phone_query(query: types.CallbackQuery) -> bool:
 
 async def _enter_goal_flow(message: types.Message, state: FSMContext) -> None:
     logger.info("GOAL flow open | user=%s chat=%s", message.from_user.id, message.chat.id)
-    if await cache.get_data(_goal_lock_key(message.from_user.id)):
-        await message.answer(
-            "🔒 Твоя цель на 30 дней уже зафиксирована.\n\n"
-            "Это сделано специально: чтобы ты не менял направление каждый день.\n"
-            "Сначала пройди текущий цикл, потом соберем новую цель.",
-            reply_markup=club_group_keyboard(CLUB_GROUP_URL),
-        )
-        return
-
     club_user = await database.ensure_club_user(
         telegram_id=message.from_user.id,
         username=message.from_user.username,
@@ -328,6 +319,25 @@ async def _enter_goal_flow(message: types.Message, state: FSMContext) -> None:
         language_code=message.from_user.language_code or "ru",
     )
     active_goal = await database.get_active_goal(club_user["id"]) if club_user else None
+
+    if await cache.get_data(_goal_lock_key(message.from_user.id)):
+        if active_goal:
+            await message.answer(
+                f"🎯 Твоя цель сейчас:\n\n{escape(str(active_goal['goal_text']))}",
+                reply_markup=private_hub_reply_keyboard(),
+            )
+        await message.answer(
+            "🔒 Твоя цель на 30 дней уже зафиксирована.\n\n"
+            "Это сделано специально: чтобы ты не менял направление каждый день.\n"
+            "Сначала пройди текущий цикл, потом соберем новую цель.",
+            reply_markup=private_hub_reply_keyboard(),
+        )
+        if CLUB_GROUP_URL:
+            await message.answer(
+                "Вернуться в группу можно здесь 👇",
+                reply_markup=return_to_group_keyboard(CLUB_GROUP_URL),
+            )
+        return
 
     await state.clear()
     await state.set_state(GoalStates.waiting_goal_text)
