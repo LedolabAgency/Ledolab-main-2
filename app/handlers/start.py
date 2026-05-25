@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, time, timedelta
+from html import escape
 
 from aiogram import F, Router, types
 from aiogram.filters import Command, CommandObject, CommandStart
@@ -108,7 +109,7 @@ def _goal_intro_text() -> str:
 def _goal_confirmation_text(goal_text: str) -> str:
     return (
         "Вот как я понял твою цель:\n\n"
-        f"🎯 {goal_text}\n\n"
+        f"🎯 {escape(str(goal_text))}\n\n"
         "Если все верно — подтверждай.\n"
         "Если хочешь уточнить формулировку — измени."
     )
@@ -143,11 +144,11 @@ def _day_focus_prompt(day_number: int) -> str:
 def _goal_review_text(goal_text: str, week_plan: list[str]) -> str:
     lines = [
         "Проверь свой маршрут:\n",
-        f"🎯 Цель на 30 дней:\n{goal_text}\n",
+        f"🎯 Цель на 30 дней:\n{escape(str(goal_text))}\n",
         "📅 План на 5 дней:",
     ]
     for index, day_text in enumerate(week_plan, 1):
-        lines.append(f"{index}. {day_text}")
+        lines.append(f"{index}. {escape(str(day_text))}")
     lines.append("")
     lines.append("Если все ок — утверждай. Если хочешь поправить — измени.")
     return "\n".join(lines)
@@ -224,14 +225,16 @@ def _day_summary_text(tasks: list[str]) -> str:
 
 
 def _group_goal_announcement(display_name: str, goal_text: str, week_plan: list[str]) -> str:
+    safe_display_name = escape(str(display_name or "Участник клуба"))
+    safe_goal_text = escape(str(goal_text or ""))
     lines = [
         "🔥 Новый участник в игре\n",
-        f"{display_name} зафиксировал свою цель на 30 дней и собрал 5-дневный маршрут в LedoLab Business Club.\n",
-        f"🎯 Цель:\n{goal_text}\n",
+        f"{safe_display_name} зафиксировал свою цель на 30 дней и собрал 5-дневный маршрут в LedoLab Business Club.\n",
+        f"🎯 Цель:\n{safe_goal_text}\n",
         "📅 Ближайшие 5 рабочих дней:",
     ]
     for index, item in enumerate(week_plan, 1):
-        lines.append(f"{index}. {item}")
+        lines.append(f"{index}. {escape(str(item or ''))}")
     lines.extend(
         [
             "",
@@ -330,7 +333,7 @@ async def _enter_goal_flow(message: types.Message, state: FSMContext) -> None:
     await state.set_state(GoalStates.waiting_goal_text)
     if active_goal:
         await message.answer(
-            f"🎯 Твоя цель сейчас:\n\n{active_goal['goal_text']}",
+            f"🎯 Твоя цель сейчас:\n\n{escape(str(active_goal['goal_text']))}",
             reply_markup=private_hub_reply_keyboard(),
         )
     await message.answer(_goal_intro_text(), reply_markup=private_hub_reply_keyboard())
@@ -361,7 +364,7 @@ async def _enter_day_launch(message: types.Message, state: FSMContext) -> None:
     if existing_tasks:
         lines = ["📌 Твой день уже зафиксирован:\n"]
         for idx, task in enumerate(existing_tasks, 1):
-            lines.append(f"{idx}. {task['task_text']}")
+            lines.append(f"{idx}. {escape(str(task['task_text']))}")
         await message.answer("\n".join(lines), reply_markup=private_hub_reply_keyboard())
         await message.answer(
             "Все зафиксировано. Когда захочешь вернуться в клуб — вот кнопка 👇",
@@ -391,7 +394,7 @@ async def _enter_day_launch(message: types.Message, state: FSMContext) -> None:
     await state.set_state(GoalStates.day_launch)
     text = _start_today_text()
     if day_focus:
-        text += f"\n\nСегодняшний фокус из твоего 5-дневного плана:\n📍 {day_focus}"
+        text += f"\n\nСегодняшний фокус из твоего 5-дневного плана:\n📍 {escape(str(day_focus))}"
     await message.answer(text, reply_markup=day_start_keyboard())
     await message.answer(
         "Если пока не хочешь собирать день — можешь вернуться в группу 👇",
@@ -1141,7 +1144,7 @@ async def show_30_day_goal(message: types.Message, state: FSMContext) -> None:
         return
 
     await message.answer(
-        f"🎯 Твоя цель на 30 дней:\n\n{active_goal['goal_text']}",
+        f"🎯 Твоя цель на 30 дней:\n\n{escape(str(active_goal['goal_text']))}",
         reply_markup=private_hub_reply_keyboard(),
     )
     await message.answer(
@@ -1172,7 +1175,7 @@ async def show_5_day_goal(message: types.Message) -> None:
 
     lines = ["📅 Твой план на 5 дней:\n"]
     for idx, item in enumerate(week_plan, 1):
-        lines.append(f"{idx}. {item}")
+        lines.append(f"{idx}. {escape(str(item))}")
     await message.answer("\n".join(lines), reply_markup=private_hub_reply_keyboard())
     await message.answer(
         "Готов двигаться дальше? Возвращайся в группу 👇",

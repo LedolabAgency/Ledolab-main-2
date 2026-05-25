@@ -254,8 +254,13 @@ async def vote_for_report(query: types.CallbackQuery) -> None:
     if report.get("status") == "suspicious" and report.get("flag_count", 0) == report_service.SUSPICIOUS_FLAGS_THRESHOLD:
         club_user = await database.get_club_user_by_id(report["user_id"])
         goal = await database.get_active_goal(report["user_id"])
+        user_label = (
+            f"@{club_user['username']}"
+            if club_user and club_user.get("username")
+            else (club_user or {}).get("first_name", "Участник")
+        )
         summary = report_service.build_admin_summary(
-            user_label=f"@{club_user['username']}" if club_user and club_user.get("username") else (club_user or {}).get("first_name", "Участник"),
+            user_label=user_label,
             goal_text=(goal or {}).get("goal_text", ""),
             entries=report.get("report_payload", []),
             flags=report.get("flag_count", 0),

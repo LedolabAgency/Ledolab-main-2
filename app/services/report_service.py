@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from html import escape
 from typing import Any, Dict, List, Optional
 
 from aiogram import types
@@ -21,7 +22,7 @@ SUSPICIOUS_FLAGS_THRESHOLD = 3
 def report_task_prompt(task_number: int, task_text: str) -> str:
     return (
         f"📌 Задача {task_number}\n"
-        f"{task_text}\n\n"
+        f"{escape(str(task_text))}\n\n"
         "Теперь пришли доказательство по этой задаче.\n"
         "Лучше всего — кружок или видео с записью экрана.\n"
         "Если нужно, можно добавить фото."
@@ -34,7 +35,7 @@ def report_intro_text(task_texts: List[str]) -> str:
         "Вот твои задачи на день:",
     ]
     for idx, task in enumerate(task_texts, 1):
-        lines.append(f"{idx}. {task}")
+        lines.append(f"{idx}. {escape(str(task))}")
     lines.extend(
         [
             "",
@@ -109,7 +110,7 @@ def render_report_preview(entries: List[Dict[str, Any]]) -> str:
         lines.append("✅ Кружочек с отчетом записан")
         comment = (entry.get("comment_text") or "").strip()
         if comment:
-            lines.append(f"💬 Комментарий: {comment}")
+            lines.append(f"💬 Комментарий: {escape(comment)}")
         lines.append("")
     lines.append("Если все ок — подтверждай.")
     return "\n".join(lines)
@@ -117,19 +118,20 @@ def render_report_preview(entries: List[Dict[str, Any]]) -> str:
 
 def build_group_summary(username: Optional[str], entries: List[Dict[str, Any]]) -> str:
     author = f"@{username}" if username else "Участник клуба"
-    lines = [f"{author}\n", "📤 Отчет за день:\n"]
+    safe_author = escape(str(author))
+    lines = [f"{safe_author}\n", "📤 Отчет за день:\n"]
     if entries:
         entry = entries[0]
         task_lines = entry.get("task_lines") or []
         if task_lines:
             lines.append("Задачи:")
             for idx, task in enumerate(task_lines, 1):
-                lines.append(f"{idx}. {task}")
+                lines.append(f"{idx}. {escape(str(task or ''))}")
             lines.append("")
         lines.append("🎥 Кружочек с отчетом — в сообщении ниже")
         comment = (entry.get("comment_text") or "").strip()
         if comment:
-            lines.append(f"💬 {comment}")
+            lines.append(f"💬 {escape(comment)}")
     lines.append("")
     lines.append("Отчет отправлен в клуб.")
     return "\n".join(lines)
@@ -138,16 +140,16 @@ def build_group_summary(username: Optional[str], entries: List[Dict[str, Any]]) 
 def build_admin_summary(user_label: str, goal_text: str, entries: List[Dict[str, Any]], flags: int) -> str:
     lines = [
         "⚠️ Нужен ручной чек отчета\n",
-        f"Участник: {user_label}",
+        f"Участник: {escape(str(user_label or 'Участник'))}",
     ]
     if goal_text:
-        lines.append(f"Цель: {goal_text}")
-    lines.append(f"Флаги: {flags}\n")
+        lines.append(f"Цель: {escape(str(goal_text))}")
+    lines.append(f"Флаги: {escape(str(flags))}\n")
     for idx, entry in enumerate(entries, 1):
-        lines.append(f"{idx}. {entry['task_text']}")
+        lines.append(f"{idx}. {escape(str(entry['task_text']))}")
         comment = (entry.get("comment_text") or "").strip()
         if comment:
-            lines.append(f"   💬 {comment}")
+            lines.append(f"   💬 {escape(comment)}")
     return "\n".join(lines)
 
 

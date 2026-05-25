@@ -3,6 +3,7 @@ Service layer for rating and leaderboard.
 """
 
 import logging
+from html import escape
 from typing import List, Dict, Any
 from app import database
 
@@ -48,7 +49,8 @@ async def format_rating_text(users: List[Dict[str, Any]]) -> str:
         medal = medals[idx - 1] if idx <= 3 else f"{idx}."
         username = user.get("username") or user.get("first_name") or "Участник"
         score = user.get("total_score", 0)
-        
-        lines.append(f"{medal} @{username} — {score} ⚡")
+
+        label = f"@{username}" if user.get("username") else str(username)
+        lines.append(f"{medal} {escape(str(label))} — {score} ⚡")
     
     return "\n".join(lines)
