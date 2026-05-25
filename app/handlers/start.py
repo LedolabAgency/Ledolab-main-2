@@ -59,8 +59,21 @@ def _report_media_msg_key(report_id: str) -> str:
     return f"report_media_msg:{report_id}"
 
 
+def _report_media_reverse_key(chat_id: int, message_id: int) -> str:
+    return f"report_media_reverse:{chat_id}:{message_id}"
+
+
 def _today() -> str:
     return datetime.now().date().isoformat()
+
+
+async def _delete_command_message_safely(message: types.Message) -> None:
+    if message.chat.type == "private":
+        return
+    try:
+        await message.delete()
+    except Exception as e:
+        logger.warning("Failed to delete admin command message %s: %s", message.message_id, e)
 
 
 def _current_club_day_index(now: datetime | None = None) -> int | None:
@@ -1060,6 +1073,7 @@ async def send_report_preview(query: types.CallbackQuery, state: FSMContext) -> 
             reply_to_message_id=group_message.message_id,
         )
         await cache.set_data(_report_media_msg_key(report["id"]), str(media_message.message_id), ex=14 * 24 * 60 * 60)
+        await cache.set_data(_report_media_reverse_key(REPORTS_GROUP_ID, media_message.message_id), report["id"], ex=14 * 24 * 60 * 60)
     await database.set_daily_report_group_post(report["id"], REPORTS_GROUP_ID, group_message.message_id)
 
     await query.message.answer(
@@ -1236,6 +1250,7 @@ async def admin_reset_user(message: types.Message) -> None:
     if message.from_user.id not in ADMIN_IDS:
         await message.answer("⛔ Эта команда только для админа.")
         return
+    await _delete_command_message_safely(message)
 
     parts = (message.text or "").split()
     if len(parts) < 2:
@@ -1288,16 +1303,27 @@ async def admin_reject_report(message: types.Message) -> None:
     if message.from_user.id not in ADMIN_IDS:
         await message.answer("⛔ Эта команда только для админа.")
         return
+    await _delete_command_message_safely(message)
 
     parts = (message.text or "").split()
-    if len(parts) < 2:
-        await message.answer("Используй так: /reject REPORT_ID")
-        return
+    report = None
+    report_id = ""
+    if len(parts) >= 2:
+        report_id = parts[1].strip()
+        report = await database.get_daily_report_by_id(report_id)
+    elif message.reply_to_message:
+        replied = message.reply_to_message
+        report = await database.get_daily_report_by_group_message(replied.chat.id, replied.message_id)
+        if not report:
+            reverse_key = _report_media_reverse_key(replied.chat.id, replied.message_id)
+            reverse_report_id = await cache.get_data(reverse_key)
+            if reverse_report_id:
+                report = await database.get_daily_report_by_id(reverse_report_id)
+        if report:
+            report_id = report["id"]
 
-    report_id = parts[1].strip()
-    report = await database.get_daily_report_by_id(report_id)
     if not report:
-        await message.answer("Не нашел такой отчет.")
+        await message.answer("Не нашел такой отчет. Используй /reject REPORT_ID или ответь /reject на сообщение отчета.")
         return
 
     report_user = await database.get_club_user_by_id(report["user_id"])
@@ -1321,13 +1347,14 @@ async def admin_reject_report(message: types.Message) -> None:
         except Exception as e:
             logger.warning("Failed to delete report summary message %s: %s", report_id, e)
 
-    media_message_id = await cache.get_data(_report_media_msg_key(report_id))
+        media_message_id = await cache.get_data(_report_media_msg_key(report_id))
     if media_message_id and report.get("group_chat_id"):
         try:
             await message.bot.delete_message(int(report["group_chat_id"]), int(media_message_id))
         except Exception as e:
             logger.warning("Failed to delete report media message %s: %s", report_id, e)
         await cache.delete_data(_report_media_msg_key(report_id))
+        await cache.delete_data(_report_media_reverse_key(int(report["group_chat_id"]), int(media_message_id)))
 
     try:
         await message.bot.send_message(
@@ -1353,11 +1380,13 @@ async def admin_commands(message: types.Message) -> None:
     if message.from_user.id not in ADMIN_IDS:
         await message.answer("⛔ Эта команда только для админа.")
         return
+    await _delete_command_message_safely(message)
 
     await message.answer(
         "🛠 Админ-команды\n\n"
         "/admin — список всех админских команд\n"
         "/reset @username — снести юзера под ноль\n"
         "/reset 123456789 — снести юзера по Telegram ID\n"
-        "/reject REPORT_ID — отклонить конкретный отчет, выдать warning и открыть пересдачу"
+        "/reject REPORT_ID — отклонить конкретный отчет, выдать warning и открыть пересдачу\n"
+        "reply /reject — отклонить отчет ответом на его сообщение в группе"
     )

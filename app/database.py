@@ -846,6 +846,24 @@ async def get_daily_report_by_id(report_id: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+async def get_daily_report_by_group_message(chat_id: int, message_id: int) -> Optional[Dict[str, Any]]:
+    """Fetch a daily report by its Telegram group summary message."""
+    try:
+        sb = get_supabase()
+        result = (
+            sb.table("daily_reports")
+            .select("*")
+            .eq("group_chat_id", chat_id)
+            .eq("group_message_id", message_id)
+            .limit(1)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+    except Exception as e:
+        logger.error(f"Error getting daily report by group message {chat_id}:{message_id}: {e}", exc_info=True)
+        return None
+
+
 async def create_or_update_daily_report(
     user_id: str,
     report_date: str,
