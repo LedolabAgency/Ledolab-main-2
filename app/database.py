@@ -902,6 +902,18 @@ async def set_daily_report_group_post(report_id: str, chat_id: int, message_id: 
         return False
 
 
+async def delete_daily_report(report_id: str) -> bool:
+    """Delete a daily report and its votes."""
+    try:
+        sb = get_supabase()
+        sb.table("daily_report_votes").delete().eq("report_id", report_id).execute()
+        sb.table("daily_reports").delete().eq("id", report_id).execute()
+        return True
+    except Exception as e:
+        logger.error(f"Error deleting daily report {report_id}: {e}", exc_info=True)
+        return False
+
+
 async def add_daily_report_vote(report_id: str, voter_telegram_id: int, vote_type: str) -> bool:
     """Record a single unique vote for a daily report."""
     try:

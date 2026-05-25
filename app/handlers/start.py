@@ -24,6 +24,7 @@ from app.keyboards.inline.start import (
     goal_review_keyboard,
     goal_text_confirm_keyboard,
     open_bot_private_keyboard,
+    open_private_flow_keyboard,
     private_hub_reply_keyboard,
     quiz_reply_keyboard,
     return_to_group_keyboard,
@@ -52,6 +53,10 @@ def _pending_quiz_key(user_id: int) -> str:
 
 def _last_group_chat_key(user_id: int) -> str:
     return f"last_group_chat:{user_id}"
+
+
+def _report_media_msg_key(report_id: str) -> str:
+    return f"report_media_msg:{report_id}"
 
 
 def _today() -> str:
@@ -1049,11 +1054,12 @@ async def send_report_preview(query: types.CallbackQuery, state: FSMContext) -> 
     )
     first_entry = entries[0]
     if first_entry.get("proof_type") == "video_note" and first_entry.get("file_id"):
-        await query.bot.send_video_note(
+        media_message = await query.bot.send_video_note(
             REPORTS_GROUP_ID,
             first_entry["file_id"],
             reply_to_message_id=group_message.message_id,
         )
+        await cache.set_data(_report_media_msg_key(report["id"]), str(media_message.message_id), ex=14 * 24 * 60 * 60)
     await database.set_daily_report_group_post(report["id"], REPORTS_GROUP_ID, group_message.message_id)
 
     await query.message.answer(
@@ -1231,9 +1237,13 @@ async def admin_reset_user(message: types.Message) -> None:
         await message.answer("⛔ Эта команда только для админа.")
         return
 
-    parts = (message.text or "").split(maxsplit=1)
+    parts = (message.text or "").split()
     if len(parts) < 2:
-        await message.answer("Используй так: /reset @username или /reset 123456789")
+        await message.answer(
+            "Используй так:\n"
+            "/reset @username\n"
+            "/reset 123456789"
+        )
         return
 
     target_telegram_id = await database.resolve_telegram_id_by_handle_or_id(parts[1])
@@ -1270,4 +1280,84 @@ async def admin_reset_user(message: types.Message) -> None:
         f"Удалено из daily_statuses: {db_stats['daily_statuses']}\n"
         f"Удалено из users: {db_stats['users']}\n"
         f"Удалено Redis-ключей: {redis_deleted}"
+    )
+
+
+@router.message(Command("reject"))
+async def admin_reject_report(message: types.Message) -> None:
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer("⛔ Эта команда только для админа.")
+        return
+
+    parts = (message.text or "").split()
+    if len(parts) < 2:
+        await message.answer("Используй так: /reject <report_id>")
+        return
+
+    report_id = parts[1].strip()
+    report = await database.get_daily_report_by_id(report_id)
+    if not report:
+        await message.answer("Не нашел такой отчет.")
+        return
+
+    report_user = await database.get_club_user_by_id(report["user_id"])
+    if not report_user:
+        await message.answer("Не нашел владельца отчета.")
+        return
+
+    task_rows = await database.get_today_tasks(report["user_id"], report["report_date"])
+    await database.update_tasks_status([task["id"] for task in task_rows], "waiting_report")
+
+    score_awarded = int(report.get("score_awarded") or 0)
+    if score_awarded:
+        await database.award_score(report["user_id"], -score_awarded, "Admin rejected daily report")
+
+    warnings = await database.increment_user_warnings(report["user_id"], 1)
+    await database.delete_daily_report(report_id)
+
+    if report.get("group_chat_id") and report.get("group_message_id"):
+        try:
+            await message.bot.delete_message(int(report["group_chat_id"]), int(report["group_message_id"]))
+        except Exception as e:
+            logger.warning("Failed to delete report summary message %s: %s", report_id, e)
+
+    media_message_id = await cache.get_data(_report_media_msg_key(report_id))
+    if media_message_id and report.get("group_chat_id"):
+        try:
+            await message.bot.delete_message(int(report["group_chat_id"]), int(media_message_id))
+        except Exception as e:
+            logger.warning("Failed to delete report media message %s: %s", report_id, e)
+        await cache.delete_data(_report_media_msg_key(report_id))
+
+    try:
+        await message.bot.send_message(
+            int(report_user["telegram_id"]),
+            "⚠️ Твой отчет был отклонен админом.\n\n"
+            "Я записал тебе warning и открыл возможность сдать отчет еще раз сегодня.\n"
+            "Пожалуйста, пересобери его нормально и без мусора.",
+            reply_markup=open_private_flow_keyboard((await message.bot.get_me()).username, "report_setup", "ПЕРЕСДАТЬ ОТЧЕТ"),
+        )
+    except Exception as e:
+        logger.warning("Failed to notify user about rejected report %s: %s", report_id, e)
+
+    await message.answer(
+        "⚠️ Отчет отклонен.\n\n"
+        f"Report ID: <code>{report_id}</code>\n"
+        f"User TG ID: <code>{report_user['telegram_id']}</code>\n"
+        f"Warnings now: {int((warnings or {}).get('warnings_count') or 0)}"
+    )
+
+
+@router.message(Command("admin"))
+async def admin_commands(message: types.Message) -> None:
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer("⛔ Эта команда только для админа.")
+        return
+
+    await message.answer(
+        "🛠 Админ-команды\n\n"
+        "/admin — список всех админских команд\n"
+        "/reset @username — снести юзера под ноль\n"
+        "/reset 123456789 — снести юзера по Telegram ID\n"
+        "/reject <report_id> — отклонить конкретный отчет, выдать warning и открыть пересдачу"
     )
