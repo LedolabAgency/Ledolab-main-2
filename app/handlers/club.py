@@ -10,7 +10,7 @@ from datetime import datetime
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 
-from app import database
+from app import cache, database
 from app.config import (
     ADMIN_IDS,
     CLUB_GROUP_URL,
@@ -26,6 +26,10 @@ router = Router()
 
 def _today() -> str:
     return datetime.now().date().isoformat()
+
+
+def _last_group_chat_key(user_id: int) -> str:
+    return f"last_group_chat:{user_id}"
 
 
 async def _ensure_group_interaction(event_message: types.Message) -> bool:
@@ -103,6 +107,7 @@ async def start_goal_flow(query: types.CallbackQuery) -> None:
     if not await _ensure_quiz_for_query(query):
         return
 
+    await cache.set_data(_last_group_chat_key(query.from_user.id), str(query.message.chat.id), ex=7 * 24 * 60 * 60)
     logger.info("GROUP goal button | user=%s chat=%s", query.from_user.id, query.message.chat.id)
     me = await query.bot.get_me()
     await query.message.answer(

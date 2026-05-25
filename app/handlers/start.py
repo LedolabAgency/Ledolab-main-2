@@ -50,6 +50,10 @@ def _pending_quiz_key(user_id: int) -> str:
     return f"pending_quiz:{user_id}"
 
 
+def _last_group_chat_key(user_id: int) -> str:
+    return f"last_group_chat:{user_id}"
+
+
 def _today() -> str:
     return datetime.now().date().isoformat()
 
@@ -763,15 +767,46 @@ async def goal_confirm(query: types.CallbackQuery, state: FSMContext) -> None:
     for day_number, day_text in enumerate(week_plan, 1):
         await cache.set_data(_goal_day_lock_key(query.from_user.id, day_number), day_text, ex=weekly_lock_ttl)
 
-    if REPORTS_GROUP_ID:
-        display_name = query.from_user.full_name or query.from_user.first_name or "Участник клуба"
+    candidate_group_chat_ids: list[int] = []
+    cached_group_chat_id = await cache.get_data(_last_group_chat_key(query.from_user.id))
+    if cached_group_chat_id:
         try:
-            await query.bot.send_message(
-                REPORTS_GROUP_ID,
-                _group_goal_announcement(display_name, goal_text, week_plan),
+            candidate_group_chat_ids.append(int(cached_group_chat_id))
+        except ValueError:
+            pass
+    if REPORTS_GROUP_ID and REPORTS_GROUP_ID not in candidate_group_chat_ids:
+        candidate_group_chat_ids.append(REPORTS_GROUP_ID)
+
+    if candidate_group_chat_ids:
+        display_name = query.from_user.full_name or query.from_user.first_name or "Участник клуба"
+        announced = False
+        for target_group_chat_id in candidate_group_chat_ids:
+            try:
+                await query.bot.send_message(
+                    target_group_chat_id,
+                    _group_goal_announcement(display_name, goal_text, week_plan),
+                )
+                logger.info(
+                    "GOAL announced to group | user=%s chat=%s goal_id=%s",
+                    query.from_user.id,
+                    target_group_chat_id,
+                    goal["id"],
+                )
+                announced = True
+                break
+            except Exception as e:
+                logger.warning(
+                    "Failed to announce goal plan to group | user=%s chat=%s goal_id=%s error=%s",
+                    query.from_user.id,
+                    target_group_chat_id,
+                    goal["id"],
+                    e,
+                )
+        if not announced:
+            await query.message.answer(
+                "⚠️ План сохранился, но я не смог отправить его в группу.\n"
+                "Это уже не твоя ошибка. Я записал это в лог.",
             )
-        except Exception as e:
-            logger.warning("Failed to announce goal plan to group: %s", e)
 
     await state.set_state(GoalStates.ready_decision)
     await state.update_data(day_goal_id=goal["id"])
@@ -1243,6 +1278,7 @@ async def cmd_menu(message: types.Message) -> None:
             )
             return
 
+        await cache.set_data(_last_group_chat_key(message.from_user.id), str(message.chat.id), ex=7 * 24 * 60 * 60)
         me = await message.bot.get_me()
         from app.keyboards.inline.start import club_main_menu  # local import to avoid cycle in type checkers
 
