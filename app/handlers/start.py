@@ -1291,7 +1291,7 @@ async def admin_reject_report(message: types.Message) -> None:
 
     parts = (message.text or "").split()
     if len(parts) < 2:
-        await message.answer("Используй так: /reject <report_id>")
+        await message.answer("Используй так: /reject REPORT_ID")
         return
 
     report_id = parts[1].strip()
@@ -1359,5 +1359,5 @@ async def admin_commands(message: types.Message) -> None:
         "/admin — список всех админских команд\n"
         "/reset @username — снести юзера под ноль\n"
         "/reset 123456789 — снести юзера по Telegram ID\n"
-        "/reject <report_id> — отклонить конкретный отчет, выдать warning и открыть пересдачу"
+        "/reject REPORT_ID — отклонить конкретный отчет, выдать warning и открыть пересдачу"
     )
