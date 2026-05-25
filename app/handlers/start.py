@@ -64,6 +64,10 @@ def _report_media_reverse_key(chat_id: int, message_id: int) -> str:
     return f"report_media_reverse:{chat_id}:{message_id}"
 
 
+def _private_screen_key(user_id: int) -> str:
+    return f"private_screen:{user_id}"
+
+
 def _today() -> str:
     return datetime.now().date().isoformat()
 
@@ -75,6 +79,43 @@ async def _delete_command_message_safely(message: types.Message) -> None:
         await message.delete()
     except Exception as e:
         logger.warning("Failed to delete admin command message %s: %s", message.message_id, e)
+
+
+async def _remember_private_screen(message: types.Message) -> None:
+    if message.chat.type != "private":
+        return
+    await cache.set_data(_private_screen_key(message.chat.id), str(message.message_id), ex=30 * 24 * 60 * 60)
+
+
+async def _show_private_screen(
+    anchor: types.Message,
+    text: str,
+    *,
+    edit_reply_markup: types.InlineKeyboardMarkup | None = None,
+    fallback_reply_markup: types.ReplyKeyboardMarkup | types.InlineKeyboardMarkup | None = None,
+    parse_mode: str | None = None,
+) -> None:
+    if anchor.chat.type != "private":
+        sent = await anchor.answer(text, reply_markup=fallback_reply_markup or edit_reply_markup, parse_mode=parse_mode)
+        await _remember_private_screen(sent)
+        return
+
+    screen_id = await cache.get_data(_private_screen_key(anchor.chat.id))
+    if screen_id:
+        try:
+            await anchor.bot.edit_message_text(
+                chat_id=anchor.chat.id,
+                message_id=int(screen_id),
+                text=text,
+                reply_markup=edit_reply_markup,
+                parse_mode=parse_mode,
+            )
+            return
+        except Exception as e:
+            logger.info("Private screen edit fallback | user=%s reason=%s", anchor.chat.id, e)
+
+    sent = await anchor.answer(text, reply_markup=fallback_reply_markup or edit_reply_markup, parse_mode=parse_mode)
+    await _remember_private_screen(sent)
 
 
 def _current_club_day_index(now: datetime | None = None) -> int | None:
@@ -248,10 +289,11 @@ def _group_goal_announcement(display_name: str, goal_text: str, week_plan: list[
 
 
 async def _show_phone_request(message: types.Message) -> None:
-    await message.answer(
+    await _show_private_screen(
+        message,
         "📱 Ты уже почти внутри клуба.\n\n"
         "Я вижу твой квиз, осталось только последнее действие — поделиться номером телефона 👇",
-        reply_markup=contact_reply_keyboard(),
+        fallback_reply_markup=contact_reply_keyboard(),
     )
 
 
@@ -321,32 +363,33 @@ async def _enter_goal_flow(message: types.Message, state: FSMContext) -> None:
     active_goal = await database.get_active_goal(club_user["id"]) if club_user else None
 
     if await cache.get_data(_goal_lock_key(message.from_user.id)):
+        locked_text = ""
         if active_goal:
-            await message.answer(
-                f"🎯 Твоя цель сейчас:\n\n{escape(str(active_goal['goal_text']))}",
-                reply_markup=private_hub_reply_keyboard(),
-            )
-        await message.answer(
+            locked_text += f"🎯 Твоя цель сейчас:\n\n{escape(str(active_goal['goal_text']))}\n\n"
+        locked_text += (
             "🔒 Твоя цель на 30 дней уже зафиксирована.\n\n"
             "Это сделано специально: чтобы ты не менял направление каждый день.\n"
-            "Сначала пройди текущий цикл, потом соберем новую цель.",
-            reply_markup=private_hub_reply_keyboard(),
+            "Сначала пройди текущий цикл, потом соберем новую цель."
         )
-        if CLUB_GROUP_URL:
-            await message.answer(
-                "Вернуться в группу можно здесь 👇",
-                reply_markup=return_to_group_keyboard(CLUB_GROUP_URL),
-            )
+        await _show_private_screen(
+            message,
+            locked_text,
+            edit_reply_markup=return_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
+            fallback_reply_markup=private_hub_reply_keyboard(),
+        )
         return
 
     await state.clear()
     await state.set_state(GoalStates.waiting_goal_text)
+    intro_text = _goal_intro_text()
     if active_goal:
-        await message.answer(
-            f"🎯 Твоя цель сейчас:\n\n{escape(str(active_goal['goal_text']))}",
-            reply_markup=private_hub_reply_keyboard(),
-        )
-    await message.answer(_goal_intro_text(), reply_markup=private_hub_reply_keyboard())
+        intro_text = f"🎯 Твоя цель сейчас:\n\n{escape(str(active_goal['goal_text']))}\n\n{intro_text}"
+    await _show_private_screen(
+        message,
+        intro_text,
+        edit_reply_markup=return_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
+        fallback_reply_markup=private_hub_reply_keyboard(),
+    )
 
 
 async def _enter_day_launch(message: types.Message, state: FSMContext) -> None:
@@ -375,10 +418,12 @@ async def _enter_day_launch(message: types.Message, state: FSMContext) -> None:
         lines = ["📌 Твой день уже зафиксирован:\n"]
         for idx, task in enumerate(existing_tasks, 1):
             lines.append(f"{idx}. {escape(str(task['task_text']))}")
-        await message.answer("\n".join(lines), reply_markup=private_hub_reply_keyboard())
-        await message.answer(
-            "Все зафиксировано. Когда захочешь вернуться в клуб — вот кнопка 👇",
-            reply_markup=return_to_group_keyboard(CLUB_GROUP_URL),
+        lines.extend(["", "Все зафиксировано. Когда захочешь вернуться в клуб — вот кнопка 👇"])
+        await _show_private_screen(
+            message,
+            "\n".join(lines),
+            edit_reply_markup=return_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
+            fallback_reply_markup=private_hub_reply_keyboard(),
         )
         return
 
@@ -405,10 +450,13 @@ async def _enter_day_launch(message: types.Message, state: FSMContext) -> None:
     text = _start_today_text()
     if day_focus:
         text += f"\n\nСегодняшний фокус из твоего 5-дневного плана:\n📍 {escape(str(day_focus))}"
-    await message.answer(text, reply_markup=day_start_keyboard())
-    await message.answer(
-        "Если пока не хочешь собирать день — можешь вернуться в группу 👇",
-        reply_markup=return_to_group_keyboard(CLUB_GROUP_URL),
+    if CLUB_GROUP_URL:
+        text += "\n\nЕсли пока не хочешь собирать день — можешь вернуться в группу 👇"
+    await _show_private_screen(
+        message,
+        text,
+        edit_reply_markup=day_start_keyboard(),
+        fallback_reply_markup=day_start_keyboard(),
     )
 
 
@@ -453,12 +501,15 @@ async def _finalize_day_tasks(message: types.Message, actor: types.User, state: 
         )
 
     await cache.set_data(day_lock_key, "1", ex=cache.seconds_until_midnight())
-    await message.answer(_day_summary_text(tasks), reply_markup=private_hub_reply_keyboard())
+    summary_text = _day_summary_text(tasks)
     if CLUB_GROUP_URL:
-        await message.answer(
-            "Когда будешь готов к следующему шагу — возвращайся в группу 👇",
-            reply_markup=club_group_keyboard(CLUB_GROUP_URL),
-        )
+        summary_text += "\n\nКогда будешь готов к следующему шагу — возвращайся в группу 👇"
+    await _show_private_screen(
+        message,
+        summary_text,
+        edit_reply_markup=return_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
+        fallback_reply_markup=private_hub_reply_keyboard(),
+    )
     await state.clear()
 
 
@@ -569,22 +620,22 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
 
         if has_quiz:
             if await _can_show_private_hub(message.from_user):
-                await message.answer(
+                await _show_private_screen(
+                    message,
                     "Ты уже внутри LedoLab Business Club 🔥\n\n"
                     "Здесь я помогаю держать фокус, а основная движуха живет через группу и твой ежедневный ритм.",
-                    reply_markup=private_hub_reply_keyboard(),
-                )
-                await message.answer(
-                    "Вернуться в группу можно здесь 👇",
-                    reply_markup=return_to_group_keyboard(CLUB_GROUP_URL),
+                    edit_reply_markup=return_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
+                    fallback_reply_markup=private_hub_reply_keyboard(),
                 )
             else:
-                await message.answer(
+                await _show_private_screen(
+                    message,
                     "LedoLab Business Club\n\n"
                     "Ты уже внутри клуба ✅\n\n"
                     "Следующий шаг — вернуться в группу и нажать `🎯 Моя цель (30 дней)`.\n"
                     "Именно с нее начинается твой рабочий маршрут.",
-                    reply_markup=club_group_keyboard(CLUB_GROUP_URL),
+                    edit_reply_markup=return_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
+                    fallback_reply_markup=club_group_keyboard(CLUB_GROUP_URL),
                 )
             return
 
@@ -1153,13 +1204,12 @@ async def show_30_day_goal(message: types.Message, state: FSMContext) -> None:
         await _enter_goal_flow(message, state)
         return
 
-    await message.answer(
-        f"🎯 Твоя цель на 30 дней:\n\n{escape(str(active_goal['goal_text']))}",
-        reply_markup=private_hub_reply_keyboard(),
-    )
-    await message.answer(
+    await _show_private_screen(
+        message,
+        f"🎯 Твоя цель на 30 дней:\n\n{escape(str(active_goal['goal_text']))}\n\n"
         "Если хочешь продолжить работу в клубе — возвращайся в группу 👇",
-        reply_markup=return_to_group_keyboard(CLUB_GROUP_URL),
+        edit_reply_markup=return_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
+        fallback_reply_markup=private_hub_reply_keyboard(),
     )
 
 
@@ -1186,10 +1236,12 @@ async def show_5_day_goal(message: types.Message) -> None:
     lines = ["📅 Твой план на 5 дней:\n"]
     for idx, item in enumerate(week_plan, 1):
         lines.append(f"{idx}. {escape(str(item))}")
-    await message.answer("\n".join(lines), reply_markup=private_hub_reply_keyboard())
-    await message.answer(
-        "Готов двигаться дальше? Возвращайся в группу 👇",
-        reply_markup=return_to_group_keyboard(CLUB_GROUP_URL),
+    lines.extend(["", "Готов двигаться дальше? Возвращайся в группу 👇"])
+    await _show_private_screen(
+        message,
+        "\n".join(lines),
+        edit_reply_markup=return_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
+        fallback_reply_markup=private_hub_reply_keyboard(),
     )
 
 
