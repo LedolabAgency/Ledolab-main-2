@@ -68,6 +68,10 @@ def _private_screen_key(user_id: int) -> str:
     return f"private_screen:{user_id}"
 
 
+def _private_nav_key(user_id: int) -> str:
+    return f"private_nav:{user_id}"
+
+
 def _today() -> str:
     return datetime.now().date().isoformat()
 
@@ -125,6 +129,29 @@ async def _show_private_screen(
 
     sent = await anchor.answer(text, reply_markup=fallback_reply_markup or edit_reply_markup, parse_mode=parse_mode)
     await _remember_private_screen(sent)
+
+
+async def _show_private_nav(anchor: types.Message, group_url: str | None) -> None:
+    if anchor.chat.type != "private" or not group_url:
+        return
+
+    nav_markup = return_to_group_keyboard(group_url)
+    nav_text = "Вернуться в группу можно здесь 👇"
+    nav_id = await cache.get_data(_private_nav_key(anchor.chat.id))
+    if nav_id:
+        try:
+            await anchor.bot.edit_message_text(
+                chat_id=anchor.chat.id,
+                message_id=int(nav_id),
+                text=nav_text,
+                reply_markup=nav_markup,
+            )
+            return
+        except Exception as e:
+            logger.info("Private nav edit fallback | user=%s reason=%s", anchor.chat.id, e)
+
+    sent = await anchor.answer(nav_text, reply_markup=nav_markup)
+    await cache.set_data(_private_nav_key(anchor.chat.id), str(sent.message_id), ex=30 * 24 * 60 * 60)
 
 
 def _current_club_day_index(now: datetime | None = None) -> int | None:
@@ -386,6 +413,7 @@ async def _enter_goal_flow(message: types.Message, state: FSMContext) -> None:
             edit_reply_markup=return_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
             fallback_reply_markup=private_hub_reply_keyboard(),
         )
+        await _show_private_nav(message, CLUB_GROUP_URL)
         return
 
     await state.clear()
@@ -399,6 +427,7 @@ async def _enter_goal_flow(message: types.Message, state: FSMContext) -> None:
         edit_reply_markup=return_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
         fallback_reply_markup=private_hub_reply_keyboard(),
     )
+    await _show_private_nav(message, CLUB_GROUP_URL)
 
 
 async def _enter_day_launch(message: types.Message, state: FSMContext) -> None:
@@ -434,6 +463,7 @@ async def _enter_day_launch(message: types.Message, state: FSMContext) -> None:
             edit_reply_markup=return_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
             fallback_reply_markup=private_hub_reply_keyboard(),
         )
+        await _show_private_nav(message, CLUB_GROUP_URL)
         return
 
     if datetime.now().hour >= 22:
@@ -519,6 +549,7 @@ async def _finalize_day_tasks(message: types.Message, actor: types.User, state: 
         edit_reply_markup=return_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
         fallback_reply_markup=private_hub_reply_keyboard(),
     )
+    await _show_private_nav(message, CLUB_GROUP_URL)
     await state.clear()
 
 
@@ -638,6 +669,7 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
                     edit_reply_markup=return_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
                     fallback_reply_markup=private_hub_reply_keyboard(),
                 )
+                await _show_private_nav(message, CLUB_GROUP_URL)
             else:
                 await _show_private_screen(
                     message,
@@ -648,6 +680,7 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
                     edit_reply_markup=return_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
                     fallback_reply_markup=club_group_keyboard(CLUB_GROUP_URL),
                 )
+                await _show_private_nav(message, CLUB_GROUP_URL)
             return
 
         welcome_text = (
@@ -1223,6 +1256,7 @@ async def show_30_day_goal(message: types.Message, state: FSMContext) -> None:
         edit_reply_markup=return_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
         fallback_reply_markup=private_hub_reply_keyboard(),
     )
+    await _show_private_nav(message, CLUB_GROUP_URL)
 
 
 @router.message(F.text == "📅 Мой план на 5 дней")
@@ -1256,6 +1290,7 @@ async def show_5_day_goal(message: types.Message) -> None:
         edit_reply_markup=return_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
         fallback_reply_markup=private_hub_reply_keyboard(),
     )
+    await _show_private_nav(message, CLUB_GROUP_URL)
 
 
 @router.message(F.text == "📌 Мой день (до 3х задач)")
