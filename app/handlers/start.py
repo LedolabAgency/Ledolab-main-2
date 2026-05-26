@@ -81,6 +81,15 @@ async def _delete_command_message_safely(message: types.Message) -> None:
         logger.warning("Failed to delete admin command message %s: %s", message.message_id, e)
 
 
+async def _delete_private_message_safely(message: types.Message) -> None:
+    if message.chat.type != "private":
+        return
+    try:
+        await message.delete()
+    except Exception as e:
+        logger.info("Failed to delete private message %s: %s", message.message_id, e)
+
+
 async def _remember_private_screen(message: types.Message) -> None:
     if message.chat.type != "private":
         return
@@ -587,6 +596,8 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
                 reply_markup=open_bot_private_keyboard(me.username),
             )
             return
+
+        await _delete_private_message_safely(message)
 
         if await cache.get_data(_pending_quiz_key(user_id)):
             await _show_phone_request(message)
@@ -1186,6 +1197,7 @@ async def drop_report_after_admin_comment(query: types.CallbackQuery) -> None:
 
 @router.message(F.text == "🎯 Моя цель 30 дней")
 async def show_30_day_goal(message: types.Message, state: FSMContext) -> None:
+    await _delete_private_message_safely(message)
     if not await _ensure_quiz_and_phone_message(message):
         return
 
@@ -1215,6 +1227,7 @@ async def show_30_day_goal(message: types.Message, state: FSMContext) -> None:
 
 @router.message(F.text == "📅 Мой план на 5 дней")
 async def show_5_day_goal(message: types.Message) -> None:
+    await _delete_private_message_safely(message)
     if not await _ensure_quiz_and_phone_message(message):
         return
 
@@ -1247,6 +1260,7 @@ async def show_5_day_goal(message: types.Message) -> None:
 
 @router.message(F.text == "📌 Мой день (до 3х задач)")
 async def show_day_hint(message: types.Message, state: FSMContext) -> None:
+    await _delete_private_message_safely(message)
     if not await _ensure_quiz_and_phone_message(message):
         return
     await _enter_day_launch(message, state)
