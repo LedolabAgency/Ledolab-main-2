@@ -11,12 +11,18 @@ from typing import Any, Dict, List, Optional
 
 from aiogram import types
 
-from app import database
+from app import cache, database
 
 logger = logging.getLogger(__name__)
 
 DAILY_REPORT_SCORE = 30
 SUSPICIOUS_FLAGS_THRESHOLD = 3
+WARNING_SCORE_PENALTY = 15
+STREAK_BONUSES = {
+    3: 10,
+    5: 25,
+    10: 50,
+}
 
 
 def report_task_prompt(task_number: int, task_text: str) -> str:
@@ -159,12 +165,31 @@ def build_admin_approved_summary(original_text: str) -> str:
 
 async def save_daily_report(
     user_id: str,
+    telegram_id: int,
     username: Optional[str],
     report_date: str,
     entries: List[Dict[str, Any]],
 ) -> Optional[Dict[str, Any]]:
     """Persist and immediately award the base daily score."""
     try:
+        score_awarded = DAILY_REPORT_SCORE
+        streak_key = cache.KeyManager.get_streak_key(telegram_id)
+        last_report_key = cache.KeyManager.get_last_report_date_key(telegram_id)
+        current_streak = int((await cache.get_data(streak_key)) or 0)
+        last_report_date = await cache.get_data(last_report_key)
+
+        if last_report_date == report_date:
+            new_streak = max(current_streak, 1)
+        else:
+            report_dt = datetime.fromisoformat(report_date).date()
+            if last_report_date:
+                last_dt = datetime.fromisoformat(last_report_date).date()
+                new_streak = current_streak + 1 if (report_dt - last_dt).days == 1 else 1
+            else:
+                new_streak = 1
+
+        streak_bonus = STREAK_BONUSES.get(new_streak, 0)
+        score_awarded += streak_bonus
         tasks_snapshot = [entry["task_text"] for entry in entries]
         summary_text = build_group_summary(username, entries)
         report = await database.create_or_update_daily_report(
@@ -173,12 +198,16 @@ async def save_daily_report(
             tasks_snapshot=tasks_snapshot,
             report_payload=entries,
             summary_text=summary_text,
-            score_awarded=DAILY_REPORT_SCORE,
+            score_awarded=score_awarded,
             status="approved",
         )
         if not report:
             return None
-        await database.award_score(user_id, DAILY_REPORT_SCORE, "Daily report submitted")
+        await database.award_score(user_id, score_awarded, f"Daily report submitted (streak {new_streak})")
+        await cache.set_data(streak_key, str(new_streak))
+        await cache.set_data(last_report_key, report_date)
+        report["current_streak"] = new_streak
+        report["streak_bonus"] = streak_bonus
         return report
     except Exception as e:
         logger.error(f"Error saving daily report {user_id}: {e}", exc_info=True)

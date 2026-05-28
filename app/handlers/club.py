@@ -213,11 +213,28 @@ async def show_rating(query: types.CallbackQuery) -> None:
     if not await _ensure_quiz_for_query(query):
         return
 
-    me = await query.bot.get_me()
     users = await rating_service.get_rating_leaderboard()
-    text = await rating_service.format_rating_text(users)
-    await query.message.edit_text(text, reply_markup=club_main_menu(me.username))
-    await query.answer()
+    text = await rating_service.format_rating_text(users, viewer_telegram_id=query.from_user.id)
+    await query.message.answer(text)
+    await query.answer("Рейтинг обновлен.")
+
+
+@router.message(F.text == "🏆 Рейтинг")
+async def show_rating_from_text(message: types.Message) -> None:
+    if message.chat.type == "private":
+        await message.answer("Рейтинг живет в группе LedoLab Business Club.")
+        return
+    if not await database.has_completed_quiz(message.from_user.id):
+        me = await message.bot.get_me()
+        await message.answer(
+            "🧭 Сначала пройди квиз в боте, а потом уже смотри рейтинг 👇",
+            reply_markup=open_bot_keyboard(me.username, "start", "🚀 ПРОЙТИ КВИЗ В БОТЕ"),
+        )
+        return
+
+    users = await rating_service.get_rating_leaderboard()
+    text = await rating_service.format_rating_text(users, viewer_telegram_id=message.from_user.id)
+    await message.answer(text)
 
 
 @router.callback_query(F.data.startswith("report_vote:"))
@@ -323,7 +340,9 @@ async def reject_report_by_admin(query: types.CallbackQuery) -> None:
 
     await database.set_daily_report_status(report_id, "rejected")
     await database.award_score(report["user_id"], -int(report.get("score_awarded") or 30), "Daily report rejected by admin")
-    await database.increment_user_warnings(report["user_id"], 3)
+    warnings = await database.increment_user_warnings(report["user_id"], 3)
+    if int((warnings or {}).get("warnings_count") or 0) >= 2:
+        await database.award_score(report["user_id"], -report_service.WARNING_SCORE_PENALTY, "Warning penalty")
 
     club_user = await database.get_club_user_by_id(report["user_id"])
     if club_user and club_user.get("telegram_id"):

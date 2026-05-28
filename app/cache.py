@@ -156,6 +156,11 @@ class KeyManager:
         return f"streak:{user_id}"
 
     @staticmethod
+    def get_last_report_date_key(user_id: int) -> str:
+        """Last successful report date key."""
+        return f"last_report_date:{user_id}"
+
+    @staticmethod
     def get_score_key(user_id: int) -> str:
         """User total Leda Score key."""
         return f"score:{user_id}"

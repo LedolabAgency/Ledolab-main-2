@@ -1096,7 +1096,7 @@ async def get_top_users(limit: int = 10) -> List[Dict[str, Any]]:
     try:
         sb = get_supabase()
         # This requires aggregation on backend or we fetch and sort
-        result = sb.table("users").select("id,username,first_name").execute()
+        result = sb.table("users").select("id,telegram_id,username,first_name,warnings_count").execute()
         
         if result.data:
             users_with_scores = []

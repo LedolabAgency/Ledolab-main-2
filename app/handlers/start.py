@@ -1151,6 +1151,7 @@ async def send_report_preview(query: types.CallbackQuery, state: FSMContext) -> 
 
     report = await report_service.save_daily_report(
         user_id=club_user["id"],
+        telegram_id=query.from_user.id,
         username=query.from_user.username,
         report_date=data.get("report_date", _today()),
         entries=entries,
@@ -1186,7 +1187,8 @@ async def send_report_preview(query: types.CallbackQuery, state: FSMContext) -> 
 
     await query.message.answer(
         "🔥 Отчет отправлен.\n\n"
-        "Баллы уже начислены: +30.\n"
+        f"LedoScore начислен: +{int(report.get('score_awarded') or 30)}.\n"
+        f"Текущий стрик: {int(report.get('current_streak') or 1)} дн.\n"
         "Теперь отчет живет в группе. Если клуб сочтет его сомнительным, я сам подключу админа.",
         reply_markup=return_to_group_keyboard(CLUB_GROUP_URL),
     )
@@ -1453,6 +1455,8 @@ async def admin_reject_report(message: types.Message) -> None:
         await database.award_score(report["user_id"], -score_awarded, "Admin rejected daily report")
 
     warnings = await database.increment_user_warnings(report["user_id"], 1)
+    if int((warnings or {}).get("warnings_count") or 0) >= 2:
+        await database.award_score(report["user_id"], -report_service.WARNING_SCORE_PENALTY, "Warning penalty")
     await database.delete_daily_report(report_id)
 
     if report.get("group_chat_id") and report.get("group_message_id"):
