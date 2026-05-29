@@ -746,9 +746,8 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
                     "Ты уже внутри LedoLab Business Club 🔥\n\n"
                     "Здесь я помогаю держать фокус, а основная движуха живет через группу и твой ежедневный ритм.",
                     edit_reply_markup=return_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
-                    fallback_reply_markup=private_hub_reply_keyboard(),
+                    fallback_reply_markup=return_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
                 )
-                await _show_private_nav(message, CLUB_GROUP_URL)
             else:
                 await _show_private_screen(
                     message,
