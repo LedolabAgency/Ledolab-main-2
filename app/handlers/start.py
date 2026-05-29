@@ -43,6 +43,7 @@ GOAL_LOCK_TTL = 30 * 24 * 60 * 60
 DAYS_IN_WEEKLY_SPRINT = 5
 ASSETS_DIR = Path(__file__).resolve().parents[2] / "assets"
 GOAL_30_DAYS_IMAGE = ASSETS_DIR / "goal_30_days_flow.png"
+QUIZ_INTRO_IMAGE = ASSETS_DIR / "quiz_intro.png"
 
 
 def _goal_lock_key(user_id: int) -> str:
@@ -396,6 +397,7 @@ async def _ensure_quiz_and_phone_message(message: types.Message) -> bool:
         return False
     if await database.has_completed_quiz(user_id):
         return True
+    await _send_flow_image(message, QUIZ_INTRO_IMAGE)
     await message.answer(
         "🧭 Сначала пройди квиз, чтобы я понял твой контекст и открыл рабочие сценарии 👇",
         reply_markup=quiz_reply_keyboard(WEB_APP_URL),
@@ -412,6 +414,7 @@ async def _ensure_quiz_and_phone_query(query: types.CallbackQuery) -> bool:
         return False
     if await database.has_completed_quiz(user_id):
         return True
+    await _send_flow_image(query.message, QUIZ_INTRO_IMAGE)
     await query.message.answer(
         "🧭 Сначала пройди квиз, чтобы я понял твой контекст и открыл рабочие сценарии 👇",
         reply_markup=quiz_reply_keyboard(WEB_APP_URL),
@@ -738,6 +741,7 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
             "LedoLab Business Club\n\n"
             "Пройди квиз, чтобы мы открыли тебе доступ дальше."
         )
+        await _send_flow_image(message, QUIZ_INTRO_IMAGE)
         await message.answer(welcome_text, reply_markup=quiz_reply_keyboard(WEB_APP_URL))
         logger.info("New user: %s", user_id)
 
