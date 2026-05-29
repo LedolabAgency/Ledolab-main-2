@@ -53,6 +53,36 @@ def _build_referral_welcome(display_name: str, referrer_name: str) -> str:
     )
 
 
+async def _resolve_target_group_ids(
+    *,
+    telegram_id: int,
+    referral: dict | None = None,
+) -> list[int]:
+    candidate_ids: list[int] = []
+
+    cached_group_chat_id = await cache.get_data(f"last_group_chat:{telegram_id}")
+    if cached_group_chat_id:
+        try:
+            candidate_ids.append(int(cached_group_chat_id))
+        except ValueError:
+            pass
+
+    if referral and referral.get("referrer_telegram_id"):
+        referrer_group_chat_id = await cache.get_data(f"last_group_chat:{int(referral['referrer_telegram_id'])}")
+        if referrer_group_chat_id:
+            try:
+                referrer_chat_id = int(referrer_group_chat_id)
+                if referrer_chat_id not in candidate_ids:
+                    candidate_ids.append(referrer_chat_id)
+            except ValueError:
+                pass
+
+    if REPORTS_GROUP_ID and REPORTS_GROUP_ID not in candidate_ids:
+        candidate_ids.append(REPORTS_GROUP_ID)
+
+    return candidate_ids
+
+
 async def announce_member_joined(
     bot: Bot,
     *,
@@ -60,14 +90,12 @@ async def announce_member_joined(
     username: str | None,
     first_name: str | None,
 ) -> None:
-    if not REPORTS_GROUP_ID:
-        return
-
     referral = await database.get_referral_by_referred_telegram(telegram_id)
     display_name = _display_name(first_name, username, telegram_id)
     key_prefix = "group_referral_welcome" if referral else "group_welcome"
     dedupe_key = f"{key_prefix}:{telegram_id}"
     if await cache.get_data(dedupe_key):
+        logger.info("GROUP welcome skipped | user=%s reason=dedupe", telegram_id)
         return
 
     text = _build_regular_welcome(display_name)
@@ -79,9 +107,36 @@ async def announce_member_joined(
             int(referral["referrer_telegram_id"]),
         )
         text = _build_referral_welcome(display_name, referrer_name)
+    target_group_ids = await _resolve_target_group_ids(telegram_id=telegram_id, referral=referral)
+    if not target_group_ids:
+        logger.warning("GROUP welcome failed | user=%s reason=no_target_group", telegram_id)
+        return
 
-    await bot.send_message(REPORTS_GROUP_ID, text)
-    await cache.set_data(dedupe_key, "1", ex=30 * 24 * 60 * 60)
+    for target_group_id in target_group_ids:
+        try:
+            await bot.send_message(target_group_id, text)
+            await cache.set_data(dedupe_key, "1", ex=30 * 24 * 60 * 60)
+            logger.info(
+                "GROUP %s sent | user=%s chat=%s",
+                "referral_welcome" if referral else "welcome",
+                telegram_id,
+                target_group_id,
+            )
+            return
+        except Exception as e:
+            logger.warning(
+                "GROUP %s failed | user=%s chat=%s error=%s",
+                "referral_welcome" if referral else "welcome",
+                telegram_id,
+                target_group_id,
+                e,
+            )
+
+    logger.warning(
+        "GROUP %s failed | user=%s reason=all_targets_failed",
+        "referral_welcome" if referral else "welcome",
+        telegram_id,
+    )
 
 
 async def send_report_deadline_reminder(bot: Bot, now: datetime | None = None) -> None:

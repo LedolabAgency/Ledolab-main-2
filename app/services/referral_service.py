@@ -4,7 +4,7 @@ import logging
 from urllib.parse import quote
 
 from aiogram import Bot
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, User
+from aiogram.types import User
 
 from app import cache, database
 
@@ -41,7 +41,7 @@ async def bind_pending_referral(new_user_id: int) -> None:
     await database.sync_referral_users(new_user_id)
 
 
-async def build_referral_invite(bot: Bot, actor: User) -> tuple[str, InlineKeyboardMarkup]:
+async def build_referral_invite(bot: Bot, actor: User) -> tuple[str, str]:
     me = await bot.get_me()
     referral_link = f"https://t.me/{me.username}?start=ref_{actor.id}"
     share_text = (
@@ -58,10 +58,7 @@ async def build_referral_invite(bot: Bot, actor: User) -> tuple[str, InlineKeybo
         f"Важно: бонусы начисляются только после {REFERRAL_REPORT_THRESHOLD}-го отчета новичка.\n\n"
         "Нажми кнопку ниже и отправь приглашение 👇"
     )
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="🚀 Пригласить друга", url=share_url)]]
-    )
-    return text, kb
+    return text, share_url
 
 
 async def process_referral_after_report(

@@ -90,6 +90,16 @@ def return_to_group_keyboard(group_url: str | None) -> types.InlineKeyboardMarku
     )
 
 
+def referral_actions_keyboard(share_url: str, group_url: str | None) -> types.InlineKeyboardMarkup:
+    """Inline actions for the referral screen."""
+    rows: list[list[types.InlineKeyboardButton]] = [
+        [types.InlineKeyboardButton(text="🚀 Пригласить друга", url=share_url)],
+    ]
+    if group_url:
+        rows.append([types.InlineKeyboardButton(text="↩️ Вернуться в группу", url=group_url)])
+    return types.InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def open_bot_private_keyboard(bot_username: str) -> types.InlineKeyboardMarkup:
     """CTA that opens the bot in a private chat."""
     return types.InlineKeyboardMarkup(

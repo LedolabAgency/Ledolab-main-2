@@ -31,6 +31,7 @@ from app.keyboards.inline.start import (
     open_private_flow_keyboard,
     private_hub_reply_keyboard,
     quiz_reply_keyboard,
+    referral_actions_keyboard,
     return_to_group_keyboard,
     step_back_reply_keyboard,
 )
@@ -154,12 +155,21 @@ async def _send_flow_image(anchor: types.Message, image_path: Path) -> None:
         logger.warning("Failed to send flow image %s to user %s: %s", image_path.name, anchor.chat.id, e)
 
 
-async def _show_private_nav(anchor: types.Message, group_url: str | None) -> None:
-    if anchor.chat.type != "private" or not group_url:
+async def _show_private_nav(
+    anchor: types.Message,
+    group_url: str | None,
+    *,
+    nav_text: str = "Вернуться в группу можно здесь 👇",
+    nav_markup: types.InlineKeyboardMarkup | None = None,
+) -> None:
+    if anchor.chat.type != "private":
         return
 
-    nav_markup = return_to_group_keyboard(group_url)
-    nav_text = "Вернуться в группу можно здесь 👇"
+    if nav_markup is None:
+        if not group_url:
+            return
+        nav_markup = return_to_group_keyboard(group_url)
+
     nav_id = await cache.get_data(_private_nav_key(anchor.chat.id))
     if nav_id:
         try:
@@ -1596,14 +1606,18 @@ async def show_referral_invite(message: types.Message) -> None:
     if not await _ensure_quiz_and_phone_message(message):
         return
 
-    text, reply_markup = await referral_service.build_referral_invite(message.bot, message.from_user)
+    text, share_url = await referral_service.build_referral_invite(message.bot, message.from_user)
     await _show_private_screen(
         message,
         text,
-        edit_reply_markup=reply_markup,
-        fallback_reply_markup=reply_markup,
+        fallback_reply_markup=private_hub_reply_keyboard(),
     )
-    await _show_private_nav(message, CLUB_GROUP_URL)
+    await _show_private_nav(
+        message,
+        CLUB_GROUP_URL,
+        nav_text="Отправь приглашение или вернись в группу 👇",
+        nav_markup=referral_actions_keyboard(share_url, CLUB_GROUP_URL),
+    )
 
 
 @router.message(Command("menu"))
@@ -1702,6 +1716,9 @@ async def admin_reset_user(message: types.Message) -> None:
         f"streak:{target_telegram_id}",
         f"score:{target_telegram_id}",
         f"leda_fsm*{target_telegram_id}*",
+        f"group_welcome:{target_telegram_id}",
+        f"group_referral_welcome:{target_telegram_id}",
+        f"last_group_chat:{target_telegram_id}",
     ])
 
     sent = await message.answer(
