@@ -21,6 +21,7 @@ from app.keyboards.inline.start import (
     contact_reply_keyboard,
     day_start_keyboard,
     day_task_next_keyboard,
+    day_task_review_keyboard,
     goal_day_step_keyboard,
     goal_edit_days_keyboard,
     goal_ready_keyboard,
@@ -318,6 +319,20 @@ def _day_summary_text(tasks: list[str]) -> str:
     return "\n".join(lines)
 
 
+def _day_review_text(tasks: list[str]) -> str:
+    lines = ["Проверь свои задачи на сегодня:\n", "📌 Твой день:"]
+    for index, task in enumerate(tasks, 1):
+        lines.append(f"{index}. {escape(str(task))}")
+    lines.extend(
+        [
+            "",
+            "Если все ок — подтверждай.",
+            "Если хочешь собрать день заново — жми изменить.",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def _group_goal_announcement(display_name: str, goal_text: str, week_plan: list[str]) -> str:
     safe_display_name = escape(str(display_name or "Участник клуба"))
     safe_goal_text = escape(str(goal_text or ""))
@@ -517,7 +532,7 @@ async def _enter_day_launch(message: types.Message, state: FSMContext) -> None:
     )
 
 
-async def _finalize_day_tasks(message: types.Message, actor: types.User, state: FSMContext) -> None:
+async def _save_day_tasks(message: types.Message, actor: types.User, state: FSMContext) -> None:
     data = await state.get_data()
     tasks = data.get("day_tasks", [])
     if not tasks:
@@ -569,6 +584,18 @@ async def _finalize_day_tasks(message: types.Message, actor: types.User, state: 
     )
     await _show_private_nav(message, CLUB_GROUP_URL)
     await state.clear()
+
+
+async def _finalize_day_tasks(message: types.Message, actor: types.User, state: FSMContext) -> None:
+    data = await state.get_data()
+    tasks = data.get("day_tasks", [])
+    if not tasks:
+        await message.answer("Не вижу задач на сегодня. Давай начнем заново позже.")
+        await state.clear()
+        return
+
+    await state.set_state(TaskStates.reviewing_day_tasks)
+    await message.answer(_day_review_text(tasks), reply_markup=day_task_review_keyboard())
 
 
 async def _enter_report_flow(message: types.Message, state: FSMContext, actor: types.User | None = None) -> None:
@@ -1061,6 +1088,36 @@ async def skip_remaining_day_tasks(query: types.CallbackQuery, state: FSMContext
 
     await _finalize_day_tasks(query.message, query.from_user, state)
     await query.answer()
+
+
+@router.callback_query(TaskStates.reviewing_day_tasks, F.data == "day_tasks_confirm")
+async def confirm_day_tasks(query: types.CallbackQuery, state: FSMContext) -> None:
+    if query.message.chat.type != "private":
+        await query.answer("Этот шаг доступен только в личке.", show_alert=True)
+        return
+
+    await _save_day_tasks(query.message, query.from_user, state)
+    await query.answer("День зафиксирован ✅")
+
+
+@router.callback_query(TaskStates.reviewing_day_tasks, F.data == "day_tasks_edit")
+async def edit_day_tasks(query: types.CallbackQuery, state: FSMContext) -> None:
+    if query.message.chat.type != "private":
+        await query.answer("Этот шаг доступен только в личке.", show_alert=True)
+        return
+
+    data = await state.get_data()
+    await state.update_data(
+        day_goal_id=data.get("day_goal_id"),
+        day_focus=data.get("day_focus"),
+        day_tasks=[],
+        expected_task_number=1,
+    )
+    await state.set_state(TaskStates.collecting_day_tasks)
+    await query.message.answer(
+        "Ок, собираем день заново.\n\nНапиши задачу №1 на сегодня 👇"
+    )
+    await query.answer("Пересобираем задачи")
 
 
 @router.message(ReportStates.waiting_proof, F.video_note)

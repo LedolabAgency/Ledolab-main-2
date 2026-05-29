@@ -36,6 +36,7 @@ class TaskStates(StatesGroup):
     waiting_task_text = State()
     waiting_day_tasks = State()
     collecting_day_tasks = State()
+    reviewing_day_tasks = State()
     task_confirmed = State()
     waiting_report = State()
     report_submitted = State()

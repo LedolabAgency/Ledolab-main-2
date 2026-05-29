@@ -177,6 +177,16 @@ def day_task_next_keyboard(next_task_number: int) -> types.InlineKeyboardMarkup:
     )
 
 
+def day_task_review_keyboard() -> types.InlineKeyboardMarkup:
+    """Confirm or rebuild today's tasks before saving them."""
+    return types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [types.InlineKeyboardButton(text="✅ Подтвердить задачи", callback_data="day_tasks_confirm")],
+            [types.InlineKeyboardButton(text="✏️ Изменить задачи", callback_data="day_tasks_edit")],
+        ]
+    )
+
+
 def club_main_menu(bot_username: str | None = None) -> types.InlineKeyboardMarkup:
     """Main working menu. In groups all buttons open the private bot."""
     goal_button: types.InlineKeyboardButton
