@@ -303,6 +303,10 @@ def _day_summary_text(tasks: list[str]) -> str:
     lines.extend(
         [
             "",
+            "Важно:",
+            "— за постановку задач LedoScore не начисляется",
+            "— LedoScore приходит только после вечернего отчета",
+            "",
             "Что дальше:",
             "— выполни их до 22:00",
             "— до 22:00 сдай отчет в группе",
@@ -1182,6 +1186,8 @@ async def send_report_preview(query: types.CallbackQuery, state: FSMContext) -> 
         report["id"],
         data.get("report_date", _today()),
     )
+    total_ledoscore = await database.get_user_total_score(club_user["id"])
+    streak_bonus = int(report.get("streak_bonus") or 0)
     await database.update_tasks_status([entry["task_id"] for entry in entries], "reported")
     group_message = await query.bot.send_message(
         REPORTS_GROUP_ID,
@@ -1201,8 +1207,11 @@ async def send_report_preview(query: types.CallbackQuery, state: FSMContext) -> 
 
     await query.message.answer(
         "🔥 Отчет отправлен.\n\n"
-        f"LedoScore начислен: +{int(report.get('score_awarded') or 30)}.\n"
+        f"База за отчет: +30 LedoScore.\n"
+        f"Бонус за стрик: +{streak_bonus}.\n"
+        f"Итого за этот отчет: +{int(report.get('score_awarded') or 30)} LedoScore.\n"
         f"Текущий стрик: {int(report.get('current_streak') or 1)} дн.\n"
+        f"Общий баланс: {total_ledoscore} LedoScore.\n"
         "Теперь отчет живет в группе. Если клуб сочтет его сомнительным, я сам подключу админа.",
         reply_markup=return_to_group_keyboard(CLUB_GROUP_URL),
     )
