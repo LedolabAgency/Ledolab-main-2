@@ -496,6 +496,18 @@ async def _enter_day_launch(message: types.Message, state: FSMContext) -> None:
     today = _today()
     existing_tasks = await database.get_today_tasks(club_user["id"], today)
     if existing_tasks:
+        if all(str(task.get("status") or "") == "reported" for task in existing_tasks):
+            await _show_private_screen(
+                message,
+                "🔥 День закрыт.\n\n"
+                "Отчет за сегодня уже сдан, LedoScore зафиксирован.\n"
+                "На сегодня все — выдохни и возвращайся завтра за новым рывком 🚀",
+                edit_reply_markup=return_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
+                fallback_reply_markup=private_hub_reply_keyboard(),
+            )
+            await _show_private_nav(message, CLUB_GROUP_URL)
+            return
+
         lines = ["📌 Твой день уже зафиксирован:\n"]
         for idx, task in enumerate(existing_tasks, 1):
             lines.append(f"{idx}. {escape(str(task['task_text']))}")
