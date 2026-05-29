@@ -7,10 +7,12 @@ from __future__ import annotations
 import logging
 from datetime import datetime, time, timedelta
 from html import escape
+from pathlib import Path
 
 from aiogram import F, Router, types
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
+from aiogram.types import FSInputFile
 
 from app import cache, database
 from app.config import ADMIN_IDS, CLUB_GROUP_URL, GOAL_SCORE, REPORTS_GROUP_ID, WEB_APP_URL
@@ -38,6 +40,8 @@ router = Router()
 
 GOAL_LOCK_TTL = 30 * 24 * 60 * 60
 DAYS_IN_WEEKLY_SPRINT = 5
+ASSETS_DIR = Path(__file__).resolve().parents[2] / "assets"
+GOAL_30_DAYS_IMAGE = ASSETS_DIR / "goal_30_days.jpeg"
 
 
 def _goal_lock_key(user_id: int) -> str:
@@ -129,6 +133,15 @@ async def _show_private_screen(
 
     sent = await anchor.answer(text, reply_markup=fallback_reply_markup or edit_reply_markup, parse_mode=parse_mode)
     await _remember_private_screen(sent)
+
+
+async def _send_flow_image(anchor: types.Message, image_path: Path) -> None:
+    if anchor.chat.type != "private" or not image_path.exists():
+        return
+    try:
+        await anchor.answer_photo(FSInputFile(str(image_path)))
+    except Exception as e:
+        logger.warning("Failed to send flow image %s to user %s: %s", image_path.name, anchor.chat.id, e)
 
 
 async def _show_private_nav(anchor: types.Message, group_url: str | None) -> None:
@@ -390,6 +403,7 @@ async def _ensure_quiz_and_phone_query(query: types.CallbackQuery) -> bool:
 
 async def _enter_goal_flow(message: types.Message, state: FSMContext) -> None:
     logger.info("GOAL flow open | user=%s chat=%s", message.from_user.id, message.chat.id)
+    await _send_flow_image(message, GOAL_30_DAYS_IMAGE)
     club_user = await database.ensure_club_user(
         telegram_id=message.from_user.id,
         username=message.from_user.username,
