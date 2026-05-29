@@ -768,8 +768,8 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
             return
 
         welcome_text = (
-            "LedoLab Business Club\n\n"
-            "Пройди квиз, чтобы мы открыли тебе доступ дальше."
+            "🚀 LedoLab Business Club от LedoLab Marketing Agency\n\n"
+            "Ответь на несколько вопросов — и мы откроем тебе доступ к следующему этапу 👇"
         )
         await _send_flow_image(message, QUIZ_INTRO_IMAGE)
         await message.answer(welcome_text, reply_markup=quiz_reply_keyboard(WEB_APP_URL))
