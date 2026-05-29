@@ -45,8 +45,10 @@ async def build_referral_invite(bot: Bot, actor: User) -> tuple[str, InlineKeybo
     me = await bot.get_me()
     referral_link = f"https://t.me/{me.username}?start=ref_{actor.id}"
     share_text = (
-        "Заходи в LedoLab Business Club 🚀\n"
-        "Пройди квиз, выстрой цель, держи дисциплину и расти в рейтинге."
+        "Не хватает фокуса?\n"
+        "Теряешься в задачах, откладываешь важное и буксуешь без системы.\n\n"
+        "В LedoLab Business Club — цель, дисциплина и окружение, которое держит в движении 🚀\n\n"
+        "Никто не придёт и не сделает это за тебя. Начни двигаться к своей цели каждый день 👇"
     )
     share_url = f"https://t.me/share/url?url={quote(referral_link)}&text={quote(share_text)}"
     text = (
