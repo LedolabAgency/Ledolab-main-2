@@ -46,6 +46,7 @@ def private_hub_reply_keyboard() -> types.ReplyKeyboardMarkup:
             [types.KeyboardButton(text="🎯 Моя цель 30 дней")],
             [types.KeyboardButton(text="📅 Мой план на 5 дней")],
             [types.KeyboardButton(text="📌 Мой день (до 3х задач)")],
+            [types.KeyboardButton(text="🚀 Рефералка")],
         ],
         resize_keyboard=True,
         is_persistent=True,

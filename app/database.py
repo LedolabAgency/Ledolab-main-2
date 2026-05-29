@@ -293,6 +293,7 @@ async def reset_user_data(telegram_id: int) -> Dict[str, int]:
     """Delete all database rows for a user across quiz and club tables."""
     stats = {
         "quiz_data": 0,
+        "referrals": 0,
         "daily_report_votes": 0,
         "daily_reports": 0,
         "reports": 0,
@@ -409,6 +410,22 @@ async def reset_user_data(telegram_id: int) -> Dict[str, int]:
             .execute()
         )
         stats["quiz_data"] = len(quiz_result.data or [])
+
+        referrals_as_referred = (
+            sb.table("referrals")
+            .delete()
+            .eq("referred_telegram_id", telegram_id)
+            .execute()
+        )
+        stats["referrals"] += len(referrals_as_referred.data or [])
+
+        referrals_as_referrer = (
+            sb.table("referrals")
+            .delete()
+            .eq("referrer_telegram_id", telegram_id)
+            .execute()
+        )
+        stats["referrals"] += len(referrals_as_referrer.data or [])
 
         users_result = (
             sb.table("users")
@@ -1010,6 +1027,132 @@ async def update_daily_report_summary_text(report_id: str, summary_text: str) ->
         return True
     except Exception as e:
         logger.error(f"Error updating report summary {report_id}: {e}", exc_info=True)
+        return False
+
+
+async def upsert_referral_link(referrer_telegram_id: int, referred_telegram_id: int) -> Optional[Dict[str, Any]]:
+    """Create a pending referral relation or return the existing one."""
+    try:
+        if referrer_telegram_id == referred_telegram_id:
+            return None
+        sb = get_supabase()
+        existing = (
+            sb.table("referrals")
+            .select("*")
+            .eq("referred_telegram_id", referred_telegram_id)
+            .limit(1)
+            .execute()
+        )
+        if existing.data:
+            return existing.data[0]
+
+        referrer_row = await get_club_user(referrer_telegram_id)
+        referred_row = await get_club_user(referred_telegram_id)
+        payload = {
+            "referrer_telegram_id": referrer_telegram_id,
+            "referred_telegram_id": referred_telegram_id,
+            "referrer_user_id": (referrer_row or {}).get("id"),
+            "referred_user_id": (referred_row or {}).get("id"),
+        }
+        result = sb.table("referrals").insert(payload).execute()
+        return result.data[0] if result.data else None
+    except Exception as e:
+        logger.error(
+            f"Error upserting referral link referrer={referrer_telegram_id} referred={referred_telegram_id}: {e}",
+            exc_info=True,
+        )
+        return None
+
+
+async def get_referral_by_referred_telegram(referred_telegram_id: int) -> Optional[Dict[str, Any]]:
+    try:
+        sb = get_supabase()
+        result = (
+            sb.table("referrals")
+            .select("*")
+            .eq("referred_telegram_id", referred_telegram_id)
+            .limit(1)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+    except Exception as e:
+        logger.error(f"Error getting referral by referred telegram {referred_telegram_id}: {e}", exc_info=True)
+        return None
+
+
+async def get_referral_by_referred_user(user_id: str) -> Optional[Dict[str, Any]]:
+    try:
+        sb = get_supabase()
+        result = (
+            sb.table("referrals")
+            .select("*")
+            .eq("referred_user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+    except Exception as e:
+        logger.error(f"Error getting referral by referred user {user_id}: {e}", exc_info=True)
+        return None
+
+
+async def sync_referral_users(referred_telegram_id: int) -> Optional[Dict[str, Any]]:
+    """Hydrate referral row with current users.id values after onboarding."""
+    try:
+        referral = await get_referral_by_referred_telegram(referred_telegram_id)
+        if not referral:
+            return None
+
+        referred_row = await get_club_user(referred_telegram_id)
+        referrer_row = await get_club_user(int(referral["referrer_telegram_id"]))
+        payload = {
+            "referred_user_id": (referred_row or {}).get("id"),
+            "referrer_user_id": (referrer_row or {}).get("id"),
+        }
+        sb = get_supabase()
+        result = sb.table("referrals").update(payload).eq("id", referral["id"]).execute()
+        return result.data[0] if result.data else {**referral, **payload}
+    except Exception as e:
+        logger.error(f"Error syncing referral users for {referred_telegram_id}: {e}", exc_info=True)
+        return None
+
+
+async def count_daily_reports_for_user(user_id: str) -> int:
+    try:
+        sb = get_supabase()
+        result = (
+            sb.table("daily_reports")
+            .select("id")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        return len(result.data or [])
+    except Exception as e:
+        logger.error(f"Error counting daily reports for {user_id}: {e}", exc_info=True)
+        return 0
+
+
+async def update_referral_progress(referral_id: str, reports_completed: int) -> bool:
+    try:
+        sb = get_supabase()
+        sb.table("referrals").update({"reports_completed": reports_completed}).eq("id", referral_id).execute()
+        return True
+    except Exception as e:
+        logger.error(f"Error updating referral progress {referral_id}: {e}", exc_info=True)
+        return False
+
+
+async def mark_referral_bonus_awarded(referral_id: str, reports_completed: int) -> bool:
+    try:
+        sb = get_supabase()
+        sb.table("referrals").update({
+            "bonus_awarded": True,
+            "reports_completed": reports_completed,
+            "awarded_at": datetime.utcnow().isoformat(),
+        }).eq("id", referral_id).execute()
+        return True
+    except Exception as e:
+        logger.error(f"Error marking referral award {referral_id}: {e}", exc_info=True)
         return False
 
 

@@ -34,6 +34,7 @@ from app.keyboards.inline.start import (
     return_to_group_keyboard,
 )
 from app.services import report_service
+from app.services import referral_service
 from app.states.quiz import GoalStates, ReportStates, TaskStates
 
 logger = logging.getLogger(__name__)
@@ -690,6 +691,13 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
 
         await _delete_private_message_safely(message)
 
+        captured_referrer_id = None
+        if start_arg.startswith("ref_") or start_arg.isdigit():
+            captured_referrer_id = await referral_service.capture_referral_start(user_id, start_arg)
+            if captured_referrer_id:
+                logger.info("REFERRAL captured | new_user=%s referrer=%s", user_id, captured_referrer_id)
+            start_arg = ""
+
         if await cache.get_data(_pending_quiz_key(user_id)):
             await _show_phone_request(message)
             return
@@ -697,6 +705,8 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
         quiz_profile = await database.get_user(user_id)
         has_phone = await _user_has_phone(user_id)
         has_quiz = await database.has_completed_quiz(user_id)
+        if captured_referrer_id and has_quiz:
+            await referral_service.bind_pending_referral(user_id)
 
         if (quiz_profile and not has_phone) or await _needs_phone_completion(message.from_user):
             await _show_phone_request(message)
@@ -1259,6 +1269,16 @@ async def send_report_preview(query: types.CallbackQuery, state: FSMContext) -> 
         report["id"],
         data.get("report_date", _today()),
     )
+    referral_bonus = await referral_service.process_referral_after_report(
+        bot=query.bot,
+        newbie_user_id=club_user["id"],
+        newbie_telegram_id=query.from_user.id,
+    )
+    referral_bonus_line = ""
+    if referral_bonus:
+        referral_bonus_line = (
+            f"🎁 Реферальный бонус: +{int((referral_bonus or {}).get('newbie_bonus') or 0)} LedoScore.\n"
+        )
     total_ledoscore = await database.get_user_total_score(club_user["id"])
     streak_bonus = int(report.get("streak_bonus") or 0)
     await database.update_tasks_status([entry["task_id"] for entry in entries], "reported")
@@ -1279,13 +1299,16 @@ async def send_report_preview(query: types.CallbackQuery, state: FSMContext) -> 
     await database.set_daily_report_group_post(report["id"], REPORTS_GROUP_ID, group_message.message_id)
 
     await query.message.answer(
-        "🔥 Отчет отправлен.\n\n"
-        f"База за отчет: +30 LedoScore.\n"
-        f"Бонус за стрик: +{streak_bonus}.\n"
-        f"Итого за этот отчет: +{int(report.get('score_awarded') or 30)} LedoScore.\n"
-        f"Текущий стрик: {int(report.get('current_streak') or 1)} дн.\n"
-        f"Общий баланс: {total_ledoscore} LedoScore.\n"
-        "Теперь отчет живет в группе. Если клуб сочтет его сомнительным, я сам подключу админа.",
+        (
+            "🔥 Отчет отправлен.\n\n"
+            f"База за отчет: +30 LedoScore.\n"
+            f"Бонус за стрик: +{streak_bonus}.\n"
+            f"Итого за этот отчет: +{int(report.get('score_awarded') or 30)} LedoScore.\n"
+            f"{referral_bonus_line}"
+            f"Текущий стрик: {int(report.get('current_streak') or 1)} дн.\n"
+            f"Общий баланс: {total_ledoscore} LedoScore.\n"
+            "Теперь отчет живет в группе. Если клуб сочтет его сомнительным, я сам подключу админа."
+        ),
         reply_markup=return_to_group_keyboard(CLUB_GROUP_URL),
     )
     await state.clear()
@@ -1399,6 +1422,31 @@ async def show_day_hint(message: types.Message, state: FSMContext) -> None:
     await _enter_day_launch(message, state)
 
 
+@router.message(Command("ref"))
+@router.message(F.text == "🚀 Рефералка")
+async def show_referral_invite(message: types.Message) -> None:
+    if message.chat.type != "private":
+        me = await message.bot.get_me()
+        await message.answer(
+            "Рефералка открывается в личке с ботом.",
+            reply_markup=open_bot_private_keyboard(me.username),
+        )
+        return
+
+    await _delete_private_message_safely(message)
+    if not await _ensure_quiz_and_phone_message(message):
+        return
+
+    text, reply_markup = await referral_service.build_referral_invite(message.bot, message.from_user)
+    await _show_private_screen(
+        message,
+        text,
+        edit_reply_markup=reply_markup,
+        fallback_reply_markup=private_hub_reply_keyboard(),
+    )
+    await _show_private_nav(message, CLUB_GROUP_URL)
+
+
 @router.message(Command("menu"))
 async def cmd_menu(message: types.Message) -> None:
     """Show inline working menu in the group only."""
@@ -1481,6 +1529,7 @@ async def admin_reset_user(message: types.Message) -> None:
     db_stats = await database.reset_user_data(target_telegram_id)
     redis_deleted = await cache.delete_keys_by_patterns([
         f"pending_quiz:{target_telegram_id}",
+        f"pending_referrer:{target_telegram_id}",
         f"goal_lock:{target_telegram_id}",
         f"goal_day_lock:{target_telegram_id}:*",
         f"day_plan_lock:{target_telegram_id}:*",
@@ -1498,6 +1547,7 @@ async def admin_reset_user(message: types.Message) -> None:
         "🧹 Сброс выполнен.\n\n"
         f"Telegram ID: <code>{target_telegram_id}</code>\n"
         f"Удалено из quiz_data: {db_stats['quiz_data']}\n"
+        f"Удалено из referrals: {db_stats['referrals']}\n"
         f"Удалено из goals: {db_stats['goals']}\n"
         f"Удалено из daily_tasks: {db_stats['daily_tasks']}\n"
         f"Удалено из reports: {db_stats['reports']}\n"

@@ -8,7 +8,7 @@ from aiogram import Router, types, F
 from app import database, cache
 from app.config import CLUB_GROUP_URL, GROUP_ENTRY_URL
 from app.keyboards.inline.start import contact_reply_keyboard, club_group_keyboard
-from app.services import quiz_service
+from app.services import quiz_service, referral_service
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -58,6 +58,7 @@ async def handle_quiz_completion(message: types.Message) -> None:
             first_name=first_name,
             language_code=message.from_user.language_code or "ru",
         )
+        await referral_service.bind_pending_referral(user_id)
 
         # Save quiz answers immediately so the user can resume even if Redis expires.
         await database.save_quiz_answers(user_id, quiz_data)
@@ -144,6 +145,7 @@ async def handle_contact_share(message: types.Message) -> None:
             return
 
     await cache.delete_data(_pending_quiz_key(message.from_user.id))
+    await referral_service.bind_pending_referral(message.from_user.id)
 
     await message.answer(
         "Спасибо! Анкету и номер телефона сохранили.",

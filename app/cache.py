@@ -170,6 +170,11 @@ class KeyManager:
         """Day plan lock key until midnight."""
         return f"day_plan_lock:{user_id}:{date}"
 
+    @staticmethod
+    def get_pending_referrer_key(user_id: int) -> str:
+        """Referrer telegram id captured from start deep link."""
+        return f"pending_referrer:{user_id}"
+
 
 def seconds_until_midnight() -> int:
     """Return seconds until the next local midnight."""
