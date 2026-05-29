@@ -1442,7 +1442,7 @@ async def show_referral_invite(message: types.Message) -> None:
         message,
         text,
         edit_reply_markup=reply_markup,
-        fallback_reply_markup=private_hub_reply_keyboard(),
+        fallback_reply_markup=reply_markup,
     )
     await _show_private_nav(message, CLUB_GROUP_URL)
 
