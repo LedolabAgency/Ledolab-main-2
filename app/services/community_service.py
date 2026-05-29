@@ -1,0 +1,145 @@
+from __future__ import annotations
+
+import logging
+from datetime import datetime, time, timedelta
+from html import escape
+from zoneinfo import ZoneInfo
+
+from aiogram import Bot
+
+from app import cache, database
+from app.config import REPORTS_GROUP_ID
+from app.services import rating_service
+
+logger = logging.getLogger(__name__)
+
+KYIV_TZ = ZoneInfo("Europe/Kiev")
+
+
+def _display_name(first_name: str | None, username: str | None, fallback_id: int) -> str:
+    if username:
+        return f"@{username}"
+    if first_name:
+        return first_name
+    return f"ID:{fallback_id}"
+
+
+def _week_window(now: datetime) -> tuple[datetime, datetime]:
+    days_since_sunday = (now.weekday() + 1) % 7
+    last_sunday = now.date() - timedelta(days=days_since_sunday)
+    week_start = datetime.combine(last_sunday, time(21, 0), tzinfo=KYIV_TZ)
+    if now < week_start:
+        week_start -= timedelta(days=7)
+    return week_start, week_start + timedelta(days=7)
+
+
+def _build_regular_welcome(display_name: str) -> str:
+    safe_name = escape(display_name)
+    return (
+        "🔥 Новое пополнение в LedoLab Business Club\n\n"
+        f"{safe_name} прошел квиз и зашел в клуб.\n\n"
+        "Здесь побеждают не самые громкие, а самые системные.\n"
+        "Поддержите новичка огнем и включите его в ритм 🔥"
+    )
+
+
+def _build_referral_welcome(display_name: str, referrer_name: str) -> str:
+    safe_name = escape(display_name)
+    safe_referrer = escape(referrer_name)
+    return (
+        "🚀 Реферальное пополнение в LedoLab Business Club\n\n"
+        f"Новый участник {safe_name} зашел по приглашению {safe_referrer}.\n\n"
+        "Если новичок дойдет до 3-го отчета, оба получат бонусы по рефералке 🔥"
+    )
+
+
+async def announce_member_joined(
+    bot: Bot,
+    *,
+    telegram_id: int,
+    username: str | None,
+    first_name: str | None,
+) -> None:
+    if not REPORTS_GROUP_ID:
+        return
+
+    referral = await database.get_referral_by_referred_telegram(telegram_id)
+    display_name = _display_name(first_name, username, telegram_id)
+    key_prefix = "group_referral_welcome" if referral else "group_welcome"
+    dedupe_key = f"{key_prefix}:{telegram_id}"
+    if await cache.get_data(dedupe_key):
+        return
+
+    text = _build_regular_welcome(display_name)
+    if referral and referral.get("referrer_telegram_id"):
+        referrer = await database.get_club_user(int(referral["referrer_telegram_id"]))
+        referrer_name = _display_name(
+            (referrer or {}).get("first_name"),
+            (referrer or {}).get("username"),
+            int(referral["referrer_telegram_id"]),
+        )
+        text = _build_referral_welcome(display_name, referrer_name)
+
+    await bot.send_message(REPORTS_GROUP_ID, text)
+    await cache.set_data(dedupe_key, "1", ex=30 * 24 * 60 * 60)
+
+
+async def send_report_deadline_reminder(bot: Bot, now: datetime | None = None) -> None:
+    if not REPORTS_GROUP_ID:
+        return
+
+    now = now or datetime.now(KYIV_TZ)
+    week_start, week_end = _week_window(now)
+    if not (week_start <= now < week_end):
+        return
+
+    elapsed_days = (now - week_start).days
+    if not (0 <= elapsed_days < 5):
+        return
+
+    analytics = await database.get_admin_analytics(now.date().isoformat())
+    missing_reports = max(int(analytics.get("missing_reports_today", 0)), 0)
+    text = (
+        "⏰ До дедлайна отчета осталось 2 часа.\n\n"
+        f"Сегодня без отчета еще {missing_reports} участ.\n"
+        "Кто двигается — тот фиксирует результат.\n"
+        "До 22:00 закрой день, сдай отчет и забери свой LedoScore 🔥"
+    )
+    await bot.send_message(REPORTS_GROUP_ID, text)
+
+
+async def send_weekly_final(bot: Bot, now: datetime | None = None) -> None:
+    if not REPORTS_GROUP_ID:
+        return
+
+    now = now or datetime.now(KYIV_TZ)
+    current_week_start, _ = _week_window(now)
+    previous_week_start = current_week_start - timedelta(days=7)
+    users = await rating_service.get_period_leaderboard(
+        previous_week_start.isoformat(),
+        current_week_start.isoformat(),
+        limit=3,
+    )
+
+    if not users:
+        await bot.send_message(
+            REPORTS_GROUP_ID,
+            "🏁 Недельная финалка LedoLab Business Club\n\n"
+            "Неделя закрыта.\n"
+            "Пока без ярко выраженных лидеров — значит, новая неделя ждет первого мощного рывка 🔥",
+        )
+        return
+
+    medals = ["🥇", "🥈", "🥉"]
+    lines = ["🏁 Недельная финалка LedoLab Business Club\n", "Лучшие за закрытую неделю:\n"]
+    for idx, user in enumerate(users, 1):
+        lines.extend(
+            [
+                f"{medals[idx - 1]} {rating_service._display_label(user)}",
+                f"LedoScore: {int(user.get('total_score', 0))}",
+                f"Стрик: {int(user.get('streak', 0))} дн.",
+                "",
+            ]
+        )
+    lines.append("Новая неделя уже началась. Не выигрывают самые громкие — выигрывают те, кто держит ритм каждый день 🚀")
+    await bot.send_message(REPORTS_GROUP_ID, "\n".join(lines).strip())

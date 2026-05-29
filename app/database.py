@@ -1260,6 +1260,113 @@ async def get_top_users(limit: int = 10) -> List[Dict[str, Any]]:
         return []
 
 
+async def get_top_users_for_period(start_iso: str, end_iso: str, limit: int = 10) -> List[Dict[str, Any]]:
+    """Aggregate scores for a specific period and return ranked users."""
+    try:
+        sb = get_supabase()
+        users_rows = (
+            sb.table("users")
+            .select("id,telegram_id,username,first_name,warnings_count")
+            .execute()
+        ).data or []
+        scores_rows = (
+            sb.table("scores")
+            .select("user_id,points,created_at")
+            .gte("created_at", start_iso)
+            .lt("created_at", end_iso)
+            .execute()
+        ).data or []
+
+        totals: Dict[str, int] = {}
+        for row in scores_rows:
+            user_id = row.get("user_id")
+            if not user_id:
+                continue
+            totals[str(user_id)] = totals.get(str(user_id), 0) + int(row.get("points") or 0)
+
+        users_with_scores: List[Dict[str, Any]] = []
+        for user in users_rows:
+            total_score = totals.get(str(user["id"]), 0)
+            if total_score <= 0:
+                continue
+            users_with_scores.append({**user, "total_score": total_score})
+
+        users_with_scores.sort(key=lambda item: int(item.get("total_score", 0)), reverse=True)
+        return users_with_scores[:limit]
+    except Exception as e:
+        logger.error(f"Error getting period top users {start_iso}..{end_iso}: {e}", exc_info=True)
+        return []
+
+
+async def get_admin_analytics(today: str) -> Dict[str, int]:
+    """Return high-level admin analytics for the club."""
+    try:
+        sb = get_supabase()
+
+        quiz_rows = (
+            sb.table("quiz_data")
+            .select("user_tg,phone_number,goal,current_income,main_obstacle,time_commitment,ready_to_report,paid_participation")
+            .execute()
+        ).data or []
+        users_rows = sb.table("users").select("id,is_banned").execute().data or []
+        goal_rows = sb.table("goals").select("id,user_id,status").execute().data or []
+        all_task_rows = sb.table("daily_tasks").select("user_id,date").execute().data or []
+        today_task_rows = [row for row in all_task_rows if str(row.get("date") or "") == today]
+        all_report_rows = sb.table("daily_reports").select("id,user_id,report_date").execute().data or []
+        today_report_rows = [row for row in all_report_rows if str(row.get("report_date") or "") == today]
+        referral_rows = sb.table("referrals").select("id,bonus_awarded").execute().data or []
+
+        required_fields = [
+            "goal",
+            "current_income",
+            "main_obstacle",
+            "time_commitment",
+            "ready_to_report",
+            "paid_participation",
+            "phone_number",
+        ]
+        completed_quiz = sum(1 for row in quiz_rows if all(bool(row.get(field)) for field in required_fields))
+        with_phone = sum(1 for row in quiz_rows if bool(row.get("phone_number")))
+        users_with_any_goal = {str(row.get("user_id")) for row in goal_rows if row.get("user_id")}
+        users_with_any_day = {str(row.get("user_id")) for row in all_task_rows if row.get("user_id")}
+        planned_today = {str(row.get("user_id")) for row in today_task_rows if row.get("user_id")}
+        reported_today = {str(row.get("user_id")) for row in today_report_rows if row.get("user_id")}
+        banned_users = sum(1 for row in users_rows if bool(row.get("is_banned")))
+
+        return {
+            "completed_quiz": completed_quiz,
+            "with_phone": with_phone,
+            "club_users": len(users_rows),
+            "users_with_goal": len(users_with_any_goal),
+            "active_goals": sum(1 for row in goal_rows if row.get("status") == "active"),
+            "users_with_day_tasks": len(users_with_any_day),
+            "planned_today": len(planned_today),
+            "reported_today": len(reported_today),
+            "missing_reports_today": max(len(planned_today) - len(reported_today), 0),
+            "reports_total": len(all_report_rows),
+            "referrals_total": len(referral_rows),
+            "referrals_awarded": sum(1 for row in referral_rows if bool(row.get("bonus_awarded"))),
+            "banned_users": banned_users,
+        }
+    except Exception as e:
+        logger.error(f"Error getting admin analytics for {today}: {e}", exc_info=True)
+        return {
+            "completed_quiz": 0,
+            "with_phone": 0,
+            "club_users": 0,
+            "users_with_goal": 0,
+            "active_goals": 0,
+            "users_with_day_tasks": 0,
+            "planned_today": 0,
+            "reported_today": 0,
+            "missing_reports_today": 0,
+            "reports_total": 0,
+            "referrals_total": 0,
+            "referrals_awarded": 0,
+            "banned_users": 0,
+        }
+
+
 async def mark_daily_status(user_id: str, status_date: str, status: str) -> bool:
     """Persist a neutral or failed day marker."""
     try:

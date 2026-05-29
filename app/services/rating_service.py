@@ -34,6 +34,16 @@ async def get_rating_leaderboard(limit: int = 10) -> List[Dict[str, Any]]:
         return []
 
 
+async def get_period_leaderboard(start_iso: str, end_iso: str, limit: int = 10) -> List[Dict[str, Any]]:
+    try:
+        users = await database.get_top_users_for_period(start_iso, end_iso, limit=500)
+        users = await _attach_streaks(users)
+        return users[:limit]
+    except Exception as e:
+        logger.error(f"Error getting period rating {start_iso}..{end_iso}: {e}", exc_info=True)
+        return []
+
+
 async def get_user_rating_position(telegram_id: int) -> Optional[Dict[str, Any]]:
     try:
         users = await database.get_top_users(500)

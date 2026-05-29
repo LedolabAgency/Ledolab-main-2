@@ -8,7 +8,7 @@ from aiogram import Router, types, F
 from app import database, cache
 from app.config import CLUB_GROUP_URL, GROUP_ENTRY_URL
 from app.keyboards.inline.start import contact_reply_keyboard, club_group_keyboard
-from app.services import quiz_service, referral_service
+from app.services import community_service, quiz_service, referral_service
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -159,3 +159,12 @@ async def handle_contact_share(message: types.Message) -> None:
         "С нее ты зайдешь в главный сценарий клуба и соберешь свой маршрут шаг за шагом.",
         reply_markup=club_group_keyboard(GROUP_ENTRY_URL or CLUB_GROUP_URL),
     )
+    try:
+        await community_service.announce_member_joined(
+            message.bot,
+            telegram_id=message.from_user.id,
+            username=message.from_user.username,
+            first_name=message.from_user.first_name,
+        )
+    except Exception as e:
+        logger.warning("Failed to announce member %s in group: %s", message.from_user.id, e)

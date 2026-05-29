@@ -20,6 +20,7 @@ from app.logging_config import logger
 from app.middlewares.throttle import ThrottleMiddleware
 from app import database, cache
 from app.handlers import start_router, quiz_router, callbacks_router, club_router
+from app.services import scheduler_service
 
 # Initialize Sentry if configured
 if SENTRY_DSN and sentry_sdk:
@@ -42,6 +43,7 @@ async def on_startup(bot: Bot) -> None:
         logger.info("✅ Supabase initialized")
         
         logger.info("✅ Redis initialized")
+        await scheduler_service.start_scheduler(bot)
 
         me = await bot.get_me()
         logger.info(f"✅ Bot @{me.username} is ready")
@@ -58,6 +60,7 @@ async def on_shutdown(bot: Bot) -> None:
     logger.info("🛑 Bot shutting down...")
     
     try:
+        await scheduler_service.stop_scheduler()
         await cache.close_redis()
         await bot.session.close()
         logger.info("✅ Connections closed")

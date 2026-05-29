@@ -17,7 +17,7 @@ from app.config import (
     REPORTS_GROUP_ID,
 )
 from app.keyboards.inline.start import club_group_keyboard, club_main_menu, open_private_flow_keyboard
-from app.services import rating_service, report_service, task_service
+from app.services import cleanup_service, rating_service, report_service, task_service
 from app.states.quiz import ReportStates, TaskStates
 
 logger = logging.getLogger(__name__)
@@ -34,20 +34,22 @@ def _last_group_chat_key(user_id: int) -> str:
 
 async def _ensure_group_interaction(event_message: types.Message) -> bool:
     if event_message.chat.type == "private":
-        await event_message.answer(
+        sent = await event_message.answer(
             "Рабочие действия доступны только в группе LedoLab Business To-Do Club.",
             reply_markup=club_group_keyboard(CLUB_GROUP_URL),
         )
+        cleanup_service.schedule_delete_message(event_message.bot, sent.chat.id, sent.message_id, 120)
         return False
     return True
 
 
 async def _ensure_group_callback(query: types.CallbackQuery) -> bool:
     if query.message.chat.type == "private":
-        await query.message.answer(
+        sent = await query.message.answer(
             "Рабочие действия доступны только в группе LedoLab Business To-Do Club.",
             reply_markup=club_group_keyboard(CLUB_GROUP_URL),
         )
+        cleanup_service.schedule_delete_message(query.bot, sent.chat.id, sent.message_id, 120)
         await query.answer()
         return False
     return True
@@ -58,11 +60,12 @@ async def _ensure_quiz_for_query(query: types.CallbackQuery) -> bool:
         return True
 
     me = await query.bot.get_me()
-    await query.message.answer(
+    sent = await query.message.answer(
         "🧭 Сначала пройди квиз в личке бота.\n\n"
         "Пока квиз не пройден, рабочие кнопки клуба закрыты 👇",
         reply_markup=open_private_flow_keyboard(me.username, "onboarding", "ПРОЙТИ КВИЗ В ЛИЧКЕ"),
     )
+    cleanup_service.schedule_delete_message(query.bot, sent.chat.id, sent.message_id, 120)
     await query.answer()
     return False
 
@@ -72,11 +75,12 @@ async def _ensure_quiz_for_message(message: types.Message) -> bool:
         return True
 
     me = await message.bot.get_me()
-    await message.answer(
+    sent = await message.answer(
         "🧭 Сначала пройди квиз в личке бота.\n\n"
         "Пока квиз не пройден, рабочие кнопки клуба закрыты 👇",
         reply_markup=open_private_flow_keyboard(me.username, "onboarding", "ПРОЙТИ КВИЗ В ЛИЧКЕ"),
     )
+    cleanup_service.schedule_delete_message(message.bot, sent.chat.id, sent.message_id, 120)
     return False
 
 
@@ -110,7 +114,7 @@ async def start_goal_flow(query: types.CallbackQuery) -> None:
     await cache.set_data(_last_group_chat_key(query.from_user.id), str(query.message.chat.id), ex=7 * 24 * 60 * 60)
     logger.info("GROUP goal button | user=%s chat=%s", query.from_user.id, query.message.chat.id)
     me = await query.bot.get_me()
-    await query.message.answer(
+    sent = await query.message.answer(
         "Цель на 30 дней задается в личке с ботом.",
         reply_markup=open_private_flow_keyboard(
             me.username,
@@ -118,6 +122,7 @@ async def start_goal_flow(query: types.CallbackQuery) -> None:
             "ОТКРЫТЬ ЦЕЛЬ В ЛИЧКЕ",
         ),
     )
+    cleanup_service.schedule_delete_message(query.bot, sent.chat.id, sent.message_id, 120)
     await query.answer()
 
 
@@ -130,7 +135,7 @@ async def open_day_view(query: types.CallbackQuery, state: FSMContext) -> None:
 
     logger.info("GROUP day button | user=%s chat=%s", query.from_user.id, query.message.chat.id)
     me = await query.bot.get_me()
-    await query.message.answer(
+    sent = await query.message.answer(
         "Собрать день лучше в личке, чтобы ничего не терялось и весь рабочий путь был в одном месте 👇",
         reply_markup=open_private_flow_keyboard(
             me.username,
@@ -138,6 +143,7 @@ async def open_day_view(query: types.CallbackQuery, state: FSMContext) -> None:
             "ОТКРЫТЬ МОЙ ДЕНЬ В ЛИЧКЕ",
         ),
     )
+    cleanup_service.schedule_delete_message(query.bot, sent.chat.id, sent.message_id, 120)
     await query.answer()
 
 
@@ -194,7 +200,7 @@ async def start_report_flow(query: types.CallbackQuery, state: FSMContext) -> No
     logger.info("GROUP report button | user=%s chat=%s", query.from_user.id, query.message.chat.id)
     me = await query.bot.get_me()
     await state.clear()
-    await query.message.answer(
+    sent = await query.message.answer(
         "📤 Отчет сдаем в личке с ботом.\n\n"
         "Там я спокойно проведу тебя по задачам по одной и соберу все доказательства без каши.",
         reply_markup=open_private_flow_keyboard(
@@ -203,6 +209,7 @@ async def start_report_flow(query: types.CallbackQuery, state: FSMContext) -> No
             "ОТКРЫТЬ ОТЧЕТ В ЛИЧКЕ",
         ),
     )
+    cleanup_service.schedule_delete_message(query.bot, sent.chat.id, sent.message_id, 120)
     await query.answer()
 
 

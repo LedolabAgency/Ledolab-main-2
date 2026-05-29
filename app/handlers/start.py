@@ -33,7 +33,7 @@ from app.keyboards.inline.start import (
     quiz_reply_keyboard,
     return_to_group_keyboard,
 )
-from app.services import report_service
+from app.services import cleanup_service, report_service
 from app.services import referral_service
 from app.states.quiz import GoalStates, ReportStates, TaskStates
 
@@ -99,6 +99,12 @@ async def _delete_private_message_safely(message: types.Message) -> None:
         await message.delete()
     except Exception as e:
         logger.info("Failed to delete private message %s: %s", message.message_id, e)
+
+
+def _schedule_cleanup(sent: types.Message | None, delay_seconds: int = 120) -> None:
+    if not sent:
+        return
+    cleanup_service.schedule_delete_message(sent.bot, sent.chat.id, sent.message_id, delay_seconds)
 
 
 async def _remember_private_screen(message: types.Message) -> None:
@@ -1520,16 +1526,18 @@ async def admin_reset_user(message: types.Message) -> None:
 
     parts = (message.text or "").split()
     if len(parts) < 2:
-        await message.answer(
+        sent = await message.answer(
             "Используй так:\n"
             "/reset @username\n"
             "/reset 123456789"
         )
+        _schedule_cleanup(sent, 120)
         return
 
     target_telegram_id = await database.resolve_telegram_id_by_handle_or_id(parts[1])
     if not target_telegram_id:
-        await message.answer("Не смог найти такого пользователя по username или id.")
+        sent = await message.answer("Не смог найти такого пользователя по username или id.")
+        _schedule_cleanup(sent, 120)
         return
 
     db_stats = await database.reset_user_data(target_telegram_id)
@@ -1549,7 +1557,7 @@ async def admin_reset_user(message: types.Message) -> None:
         f"leda_fsm*{target_telegram_id}*",
     ])
 
-    await message.answer(
+    sent = await message.answer(
         "🧹 Сброс выполнен.\n\n"
         f"Telegram ID: <code>{target_telegram_id}</code>\n"
         f"Удалено из quiz_data: {db_stats['quiz_data']}\n"
@@ -1564,6 +1572,7 @@ async def admin_reset_user(message: types.Message) -> None:
         f"Удалено из users: {db_stats['users']}\n"
         f"Удалено Redis-ключей: {redis_deleted}"
     )
+    _schedule_cleanup(sent, 180)
 
 
 @router.message(Command("reject"))
@@ -1591,12 +1600,14 @@ async def admin_reject_report(message: types.Message) -> None:
             report_id = report["id"]
 
     if not report:
-        await message.answer("Не нашел такой отчет. Используй /reject REPORT_ID или ответь /reject на сообщение отчета.")
+        sent = await message.answer("Не нашел такой отчет. Используй /reject REPORT_ID или ответь /reject на сообщение отчета.")
+        _schedule_cleanup(sent, 120)
         return
 
     report_user = await database.get_club_user_by_id(report["user_id"])
     if not report_user:
-        await message.answer("Не нашел владельца отчета.")
+        sent = await message.answer("Не нашел владельца отчета.")
+        _schedule_cleanup(sent, 120)
         return
 
     task_rows = await database.get_today_tasks(report["user_id"], report["report_date"])
@@ -1637,12 +1648,13 @@ async def admin_reject_report(message: types.Message) -> None:
     except Exception as e:
         logger.warning("Failed to notify user about rejected report %s: %s", report_id, e)
 
-    await message.answer(
+    sent = await message.answer(
         "⚠️ Отчет отклонен.\n\n"
         f"Report ID: <code>{report_id}</code>\n"
         f"User TG ID: <code>{report_user['telegram_id']}</code>\n"
         f"Warnings now: {int((warnings or {}).get('warnings_count') or 0)}"
     )
+    _schedule_cleanup(sent, 180)
 
 
 @router.message(Command("admin"))
@@ -1652,11 +1664,40 @@ async def admin_commands(message: types.Message) -> None:
         return
     await _delete_command_message_safely(message)
 
-    await message.answer(
+    sent = await message.answer(
         "🛠 Админ-команды\n\n"
         "/admin — список всех админских команд\n"
+        "/adminstats — живая аналитика клуба\n"
         "/reset @username — снести юзера под ноль\n"
         "/reset 123456789 — снести юзера по Telegram ID\n"
         "/reject REPORT_ID — отклонить конкретный отчет, выдать warning и открыть пересдачу\n"
         "reply /reject — отклонить отчет ответом на его сообщение в группе"
     )
+    _schedule_cleanup(sent, 180)
+
+
+@router.message(Command("adminstats"))
+async def admin_stats(message: types.Message) -> None:
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer("⛔ Эта команда только для админа.")
+        return
+    await _delete_command_message_safely(message)
+
+    stats = await database.get_admin_analytics(_today())
+    sent = await message.answer(
+        "📊 Админ-аналитика LedoLab Business Club\n\n"
+        f"Квиз прошли: <b>{stats['completed_quiz']}</b>\n"
+        f"Телефон дали: <b>{stats['with_phone']}</b>\n"
+        f"Участников в клубе: <b>{stats['club_users']}</b>\n"
+        f"Цель собрали: <b>{stats['users_with_goal']}</b>\n"
+        f"Активных целей сейчас: <b>{stats['active_goals']}</b>\n"
+        f"Хотя бы раз собрали день: <b>{stats['users_with_day_tasks']}</b>\n\n"
+        f"День сегодня запланировали: <b>{stats['planned_today']}</b>\n"
+        f"Отчет сегодня сдали: <b>{stats['reported_today']}</b>\n"
+        f"Сегодня еще без отчета: <b>{stats['missing_reports_today']}</b>\n"
+        f"Всего отчетов: <b>{stats['reports_total']}</b>\n\n"
+        f"Всего рефералов: <b>{stats['referrals_total']}</b>\n"
+        f"Дошли до 3-го отчета: <b>{stats['referrals_awarded']}</b>\n"
+        f"Забанено: <b>{stats['banned_users']}</b>"
+    )
+    _schedule_cleanup(sent, 300)
