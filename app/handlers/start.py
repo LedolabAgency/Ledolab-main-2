@@ -489,7 +489,13 @@ async def _enter_day_launch(message: types.Message, state: FSMContext) -> None:
         lines = ["📌 Твой день уже зафиксирован:\n"]
         for idx, task in enumerate(existing_tasks, 1):
             lines.append(f"{idx}. {escape(str(task['task_text']))}")
-        lines.extend(["", "Все зафиксировано. Когда захочешь вернуться в клуб — вот кнопка 👇"])
+        lines.extend(
+            [
+                "",
+                "До 22:00 сдай отчет за сегодня.",
+                "За отчет ты получишь LedoScore и поднимешься в рейтинге 👇",
+            ]
+        )
         await _show_private_screen(
             message,
             "\n".join(lines),
@@ -1185,7 +1191,7 @@ async def redo_report_preview(query: types.CallbackQuery, state: FSMContext) -> 
     await state.update_data(report_entries=[])
     await state.set_state(ReportStates.waiting_proof)
     await query.message.answer(
-        "Ок, переписываем отчет.\n\nЗапиши новый кружочек до 1 минуты 👇",
+        "Ок, переписываем отчет.\n\nЗапиши один кружочек до 1 минуты, где коротко расскажешь, что сделал по всем задачам 👇",
         reply_markup=return_to_group_keyboard(CLUB_GROUP_URL),
     )
     await query.answer()

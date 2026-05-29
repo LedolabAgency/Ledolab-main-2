@@ -37,7 +37,7 @@ def report_task_prompt(task_number: int, task_text: str) -> str:
 
 def report_intro_text(task_texts: List[str]) -> str:
     lines = [
-        "📤 Давай спокойно сдадим отчет за сегодня.\n",
+        "📤 Давай спокойно сдадим отчет за сегодня, чтобы зафиксировать день и получить LedoScore.\n",
         "Вот твои задачи на день:",
     ]
     for idx, task in enumerate(task_texts, 1):
