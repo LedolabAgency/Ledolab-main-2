@@ -6,7 +6,7 @@ import logging
 import json
 from aiogram import Router, types, F
 from app import database, cache
-from app.config import CLUB_GROUP_URL
+from app.config import CLUB_GROUP_URL, GROUP_ENTRY_URL
 from app.keyboards.inline.start import contact_reply_keyboard, club_group_keyboard
 from app.services import quiz_service
 
@@ -155,5 +155,5 @@ async def handle_contact_share(message: types.Message) -> None:
         "Дальше все начинается с группы:\n"
         "там есть кнопка `🎯 Моя цель (30 дней)`.\n\n"
         "С нее ты зайдешь в главный сценарий клуба и соберешь свой маршрут шаг за шагом.",
-        reply_markup=club_group_keyboard(CLUB_GROUP_URL),
+        reply_markup=club_group_keyboard(GROUP_ENTRY_URL or CLUB_GROUP_URL),
     )
