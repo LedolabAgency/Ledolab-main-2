@@ -122,7 +122,14 @@ def render_report_preview(entries: List[Dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def build_group_summary(username: Optional[str], entries: List[Dict[str, Any]]) -> str:
+def build_group_summary(
+    username: Optional[str],
+    entries: List[Dict[str, Any]],
+    *,
+    score_awarded: Optional[int] = None,
+    current_streak: Optional[int] = None,
+    total_ledoscore: Optional[int] = None,
+) -> str:
     author = f"@{username}" if username else "Участник клуба"
     safe_author = escape(str(author))
     lines = [f"{safe_author}\n", "📤 Отчет за день:\n"]
@@ -138,6 +145,15 @@ def build_group_summary(username: Optional[str], entries: List[Dict[str, Any]]) 
         comment = (entry.get("comment_text") or "").strip()
         if comment:
             lines.append(f"💬 {escape(comment)}")
+    if score_awarded is not None or current_streak is not None or total_ledoscore is not None:
+        lines.append("")
+        lines.append("📊 LedoScore:")
+        if score_awarded is not None:
+            lines.append(f"За этот отчет: +{int(score_awarded)}")
+        if current_streak is not None:
+            lines.append(f"Текущий стрик: {int(current_streak)} дн.")
+        if total_ledoscore is not None:
+            lines.append(f"Общий баланс: {int(total_ledoscore)}")
     lines.append("")
     lines.append("Отчет отправлен в клуб.")
     return "\n".join(lines)
@@ -204,10 +220,21 @@ async def save_daily_report(
         if not report:
             return None
         await database.award_score(user_id, score_awarded, f"Daily report submitted (streak {new_streak})")
+        total_ledoscore = await database.get_user_total_score(user_id)
         await cache.set_data(streak_key, str(new_streak))
         await cache.set_data(last_report_key, report_date)
+        summary_text = build_group_summary(
+            username,
+            entries,
+            score_awarded=score_awarded,
+            current_streak=new_streak,
+            total_ledoscore=total_ledoscore,
+        )
+        await database.update_daily_report_summary_text(report["id"], summary_text)
+        report["summary_text"] = summary_text
         report["current_streak"] = new_streak
         report["streak_bonus"] = streak_bonus
+        report["total_ledoscore"] = total_ledoscore
         return report
     except Exception as e:
         logger.error(f"Error saving daily report {user_id}: {e}", exc_info=True)
