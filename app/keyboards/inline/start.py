@@ -54,6 +54,18 @@ def private_hub_reply_keyboard() -> types.ReplyKeyboardMarkup:
     )
 
 
+def step_back_reply_keyboard() -> types.ReplyKeyboardMarkup:
+    """Compact reply keyboard for going one step back inside a private flow."""
+    return types.ReplyKeyboardMarkup(
+        keyboard=[
+            [types.KeyboardButton(text="⬅️ Шаг назад")],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+        input_field_placeholder="Если ошибся — вернись на шаг назад",
+    )
+
+
 def club_group_keyboard(group_url: str | None) -> types.InlineKeyboardMarkup | None:
     """Single CTA that sends the user to the working group."""
     if not group_url:
@@ -111,6 +123,7 @@ def goal_day_step_keyboard(day_number: int) -> types.InlineKeyboardMarkup:
     return types.InlineKeyboardMarkup(
         inline_keyboard=[
             [types.InlineKeyboardButton(text=f"{day_number}-Й ДЕНЬ", callback_data=f"goal_day:{day_number}")],
+            [types.InlineKeyboardButton(text="⬅️ Шаг назад", callback_data="flow_back")],
         ]
     )
 
@@ -121,6 +134,7 @@ def goal_review_keyboard() -> types.InlineKeyboardMarkup:
         inline_keyboard=[
             [types.InlineKeyboardButton(text="✅ Утвердить план", callback_data="goal_confirm")],
             [types.InlineKeyboardButton(text="✏️ Изменить план", callback_data="goal_edit")],
+            [types.InlineKeyboardButton(text="⬅️ Шаг назад", callback_data="flow_back")],
         ]
     )
 
@@ -131,6 +145,7 @@ def goal_text_confirm_keyboard() -> types.InlineKeyboardMarkup:
         inline_keyboard=[
             [types.InlineKeyboardButton(text="✅ Подтвердить цель", callback_data="goal_text_confirm")],
             [types.InlineKeyboardButton(text="✏️ Изменить цель", callback_data="goal_text_edit")],
+            [types.InlineKeyboardButton(text="⬅️ Шаг назад", callback_data="flow_back")],
         ]
     )
 
@@ -144,6 +159,7 @@ def goal_edit_days_keyboard() -> types.InlineKeyboardMarkup:
             [types.InlineKeyboardButton(text="3-Й ДЕНЬ", callback_data="goal_edit_day:3")],
             [types.InlineKeyboardButton(text="4-Й ДЕНЬ", callback_data="goal_edit_day:4")],
             [types.InlineKeyboardButton(text="5-Й ДЕНЬ", callback_data="goal_edit_day:5")],
+            [types.InlineKeyboardButton(text="⬅️ Шаг назад", callback_data="flow_back")],
         ]
     )
 
@@ -154,6 +170,7 @@ def goal_ready_keyboard() -> types.InlineKeyboardMarkup:
         inline_keyboard=[
             [types.InlineKeyboardButton(text="🔥 Готов начать сегодня", callback_data="goal_ready_now")],
             [types.InlineKeyboardButton(text="⏳ Начну позже", callback_data="goal_ready_later")],
+            [types.InlineKeyboardButton(text="⬅️ Шаг назад", callback_data="flow_back")],
         ]
     )
 
@@ -164,6 +181,7 @@ def day_start_keyboard() -> types.InlineKeyboardMarkup:
         inline_keyboard=[
             [types.InlineKeyboardButton(text="🚀 Погнали", callback_data="day_go")],
             [types.InlineKeyboardButton(text="⏳ Отложить на завтра", callback_data="day_tomorrow")],
+            [types.InlineKeyboardButton(text="⬅️ Шаг назад", callback_data="flow_back")],
         ]
     )
 
@@ -174,6 +192,7 @@ def day_task_next_keyboard(next_task_number: int) -> types.InlineKeyboardMarkup:
         inline_keyboard=[
             [types.InlineKeyboardButton(text=f"➕ Добавить задачу №{next_task_number}", callback_data=f"day_task_next:{next_task_number}")],
             [types.InlineKeyboardButton(text="⏭ Пропустить", callback_data="day_task_skip")],
+            [types.InlineKeyboardButton(text="⬅️ Шаг назад", callback_data="flow_back")],
         ]
     )
 
@@ -184,6 +203,7 @@ def day_task_review_keyboard() -> types.InlineKeyboardMarkup:
         inline_keyboard=[
             [types.InlineKeyboardButton(text="✅ Подтвердить задачи", callback_data="day_tasks_confirm")],
             [types.InlineKeyboardButton(text="✏️ Изменить задачи", callback_data="day_tasks_edit")],
+            [types.InlineKeyboardButton(text="⬅️ Шаг назад", callback_data="flow_back")],
         ]
     )
 
