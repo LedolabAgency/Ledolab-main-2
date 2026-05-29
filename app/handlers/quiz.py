@@ -91,15 +91,7 @@ async def handle_quiz_completion(message: types.Message) -> None:
         await progress_msg.delete()
         
         # Ask for the final action after quiz completion
-        await message.answer(
-            profile_text
-            + "\n\n"
-            + "Главная зона внимания: ежедневные действия и измеримый прогресс.\n\n"
-            + "Следующий шаг — войти в LedoLab Business Club.\n"
-            + "Там ты ставишь одну глобальную цель на месяц, далее дробишь на 5 дней (неделю), "
-            + "после каждое утро разделяешь на более мелкие задачи, вечером сдаешь отчет "
-            + "и растешь в рейтинге предпринимателей в охоте за призом.",
-        )
+        await message.answer(profile_text)
         await message.answer(
             "Последнее действие — поделиться номером телефона.",
             reply_markup=contact_reply_keyboard(),
