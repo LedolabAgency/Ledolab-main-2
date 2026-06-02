@@ -192,6 +192,17 @@ def after_goal_confirm_keyboard(
     return types.InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def back_to_group_keyboard(group_url: str | None = None) -> types.InlineKeyboardMarkup | None:
+    """Simple inline button back to the club group."""
+    if not group_url:
+        return None
+    return types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [types.InlineKeyboardButton(text="↩️ Вернуться в группу", url=group_url)]
+        ]
+    )
+
+
 def goal_ready_keyboard() -> types.InlineKeyboardMarkup:
     """Ask whether the user is ready to start today."""
     return types.InlineKeyboardMarkup(
