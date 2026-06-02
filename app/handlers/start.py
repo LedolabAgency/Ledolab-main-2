@@ -18,9 +18,9 @@ from app.keyboards.inline.start import (
     goal_day_step_keyboard,
     goal_edit_days_keyboard,
     goal_review_keyboard,
-    open_bot_keyboard,
+    open_private_flow_keyboard,
     private_hub_reply_keyboard,
-    start_keyboard,
+    quiz_reply_keyboard,
 )
 from app.states.quiz import GoalStates, TaskStates
 
@@ -98,7 +98,7 @@ async def _start_goal_flow(message: types.Message, state: FSMContext) -> None:
         await message.answer(
             "🧭 Сначала пройди квиз, чтобы я понял, на каком ты этапе и как тебя правильно вести дальше.\n\n"
             "После квиза откроются цель на 30 дней, план на 7 дней и дневные задачи 👇",
-            reply_markup=start_keyboard(WEB_APP_URL),
+            reply_markup=quiz_reply_keyboard(WEB_APP_URL),
         )
         return
 
@@ -139,7 +139,7 @@ async def _start_day_flow(message: types.Message, state: FSMContext) -> None:
         await message.answer(
             "🧭 Пока что дневной план закрыт.\n\n"
             "Сначала пройди квиз — после него я открою тебе цель, недельный маршрут и кнопку дня 👇",
-            reply_markup=start_keyboard(WEB_APP_URL),
+            reply_markup=quiz_reply_keyboard(WEB_APP_URL),
         )
         return
 
@@ -220,7 +220,7 @@ async def cmd_start(
                 "В группе ты работаешь с меню и отчетами.\n"
                 "А личка нужна для настройки цели и спокойной сборки дня.\n\n"
                 "Если нужно — открой личку бота кнопкой ниже 👇",
-                reply_markup=open_bot_keyboard(me.username, "start", "🤖 ОТКРЫТЬ БОТА В ЛИЧКЕ"),
+                reply_markup=open_private_flow_keyboard(me.username, "start", "🤖 ОТКРЫТЬ БОТА В ЛИЧКЕ"),
             )
             return
 
@@ -243,7 +243,7 @@ async def cmd_start(
                 "Если готов продолжать движение — открывай меню и работай по шагам.\n"
                 "Если нужен большой маршрут — начни с цели на 30 дней.\n"
                 "Если нужен конкретный фокус на сегодня — переходи в день.",
-                inline_markup=club_main_menu(me.username, is_private=True),
+                inline_markup=club_main_menu(me.username),
                 inline_text="Ниже у тебя теперь есть быстрые кнопки-напоминания.\nА если нужен старый inline-вариант меню — он тоже под рукой 👇",
             )
             return
@@ -255,7 +255,7 @@ async def cmd_start(
             "Сначала пройди короткий квиз.\n"
             "Он поможет нам понять твой уровень и точнее провести тебя дальше 👇"
         )
-        await message.answer(welcome_text, reply_markup=start_keyboard(WEB_APP_URL))
+        await message.answer(welcome_text, reply_markup=quiz_reply_keyboard(WEB_APP_URL))
         logger.info(f"New user: {user_id}")
 
     except Exception as e:
@@ -270,7 +270,7 @@ async def show_30_day_goal(message: types.Message) -> None:
     if not await database.has_completed_quiz(message.from_user.id):
         await message.answer(
             "🧭 Сначала пройди квиз. После него я смогу показать тебе цель и весь маршрут 👇",
-            reply_markup=start_keyboard(WEB_APP_URL),
+            reply_markup=quiz_reply_keyboard(WEB_APP_URL),
         )
         return
 
@@ -302,7 +302,7 @@ async def show_7_day_plan(message: types.Message) -> None:
     if not await database.has_completed_quiz(message.from_user.id):
         await message.answer(
             "🧭 Сначала пройди квиз. Потом я покажу тебе и большую цель, и план на 7 дней 👇",
-            reply_markup=start_keyboard(WEB_APP_URL),
+            reply_markup=quiz_reply_keyboard(WEB_APP_URL),
         )
         return
 
