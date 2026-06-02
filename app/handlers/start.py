@@ -169,19 +169,16 @@ async def _start_day_flow(message: types.Message, state: FSMContext) -> None:
         tasks_text = "\n".join(
             f"{idx}. {task.get('task_text', '')}" for idx, task in enumerate(today_tasks[:3], 1)
         ) or "Пока задачи не найдены в базе, но дневной слот уже зафиксирован."
-        await message.answer(
+        await _answer_private_with_actions(
+            message,
             "📅 <b>Твой день уже собран.</b>\n\n"
             "На сегодня у тебя зафиксированы такие задачи:\n"
             f"{tasks_text}\n\n"
             "Сейчас не нужно перепридумывать день заново.\n"
             "Когда будешь готов — вернись и сдай отчет 📤",
-            reply_markup=private_hub_reply_keyboard(),
+            inline_markup=back_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
+            inline_text="Если хочешь продолжить уже в группе, вот быстрый переход 👇",
         )
-        if CLUB_GROUP_URL:
-            await message.answer(
-                "Если хочешь продолжить уже в группе, вот быстрый переход 👇",
-                reply_markup=back_to_group_keyboard(CLUB_GROUP_URL),
-            )
         return
 
     milestones = active_goal.get("milestones") or []
@@ -240,17 +237,14 @@ async def cmd_start(
         has_quiz = await database.has_completed_quiz(user_id)
         if has_quiz:
             me = await message.bot.get_me()
-            await message.answer(
+            await _answer_private_with_actions(
+                message,
                 "🔥 <b>Ты уже внутри LedoLab Business Club.</b>\n\n"
                 "Если готов продолжать движение — открывай меню и работай по шагам.\n"
                 "Если нужен большой маршрут — начни с цели на 30 дней.\n"
                 "Если нужен конкретный фокус на сегодня — переходи в день.",
-                reply_markup=private_hub_reply_keyboard(),
-            )
-            await message.answer(
-                "Ниже у тебя теперь есть быстрые кнопки-напоминания.\n"
-                "А если нужен старый inline-вариант меню — он тоже под рукой 👇",
-                reply_markup=club_main_menu(me.username, is_private=True),
+                inline_markup=club_main_menu(me.username, is_private=True),
+                inline_text="Ниже у тебя теперь есть быстрые кнопки-напоминания.\nА если нужен старый inline-вариант меню — он тоже под рукой 👇",
             )
             return
 
@@ -290,11 +284,13 @@ async def show_30_day_goal(message: types.Message) -> None:
         await message.answer("Пока цели на 30 дней нет. Нажми `🎯 Моя цель (30 дней)` и мы соберем ее вместе.")
         return
 
-    await message.answer(
+    await _answer_private_with_actions(
+        message,
         "🎯 <b>Твоя цель на 30 дней</b>\n\n"
         f"{active_goal.get('goal_text', '')}\n\n"
         "Держи ее перед глазами и не распыляйся. Большой результат всегда начинается с ясного фокуса 🔥",
-        reply_markup=private_hub_reply_keyboard(),
+        inline_markup=back_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
+        inline_text="Вернуться в группу можно здесь 👇",
     )
 
 
@@ -334,7 +330,12 @@ async def show_7_day_plan(message: types.Message) -> None:
             "Вот твой ближайший маршрут.\nНе надо помнить все в голове — просто возвращайся сюда и сверяй направление 💡",
         ]
     )
-    await message.answer("\n".join(lines), reply_markup=private_hub_reply_keyboard())
+    await _answer_private_with_actions(
+        message,
+        "\n".join(lines),
+        inline_markup=back_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
+        inline_text="Вернуться в группу можно здесь 👇",
+    )
 
 
 @router.message(F.text == "📌 Мой день (до 3х задач)")
