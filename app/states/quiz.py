@@ -26,6 +26,7 @@ class GoalStates(StatesGroup):
     waiting_day_text = State()
     reviewing = State()
     editing = State()
+    editing_day = State()
     ready_decision = State()
     day_launch = State()
     confirmed = State()
