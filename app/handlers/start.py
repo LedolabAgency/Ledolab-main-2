@@ -564,10 +564,9 @@ async def confirm_day_tasks(query: types.CallbackQuery, state: FSMContext) -> No
     await query.answer("Задачи на день зафиксированы ✅")
 
 
-@router.callback_query(
-    (TaskStates.waiting_task_text | TaskStates.collecting_day_tasks | TaskStates.reviewing_day_tasks),
-    F.data == "flow_back",
-)
+@router.callback_query(TaskStates.waiting_task_text, F.data == "flow_back")
+@router.callback_query(TaskStates.collecting_day_tasks, F.data == "flow_back")
+@router.callback_query(TaskStates.reviewing_day_tasks, F.data == "flow_back")
 async def handle_day_flow_back(query: types.CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
     current_state = await state.get_state()
