@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from aiogram import F, Router, types
 from aiogram.filters import CommandObject, CommandStart
@@ -15,6 +15,9 @@ from app.keyboards.inline.start import (
     after_goal_confirm_keyboard,
     back_to_group_keyboard,
     club_main_menu,
+    day_start_keyboard,
+    day_task_next_keyboard,
+    day_task_review_keyboard,
     goal_day_step_keyboard,
     goal_edit_days_keyboard,
     goal_review_keyboard,
@@ -26,6 +29,99 @@ from app.states.quiz import GoalStates, TaskStates
 
 logger = logging.getLogger(__name__)
 router = Router()
+
+
+def _club_now() -> datetime:
+    return datetime.now()
+
+
+def _club_day_date(now: datetime | None = None) -> str:
+    current = now or _club_now()
+    if current.hour >= 22:
+        current = current + timedelta(days=1)
+    return current.date().isoformat()
+
+
+def _club_day_deadline_text(now: datetime | None = None) -> str:
+    current = now or _club_now()
+    if current.hour >= 22:
+        return "до 22:00 завтрашнего дня"
+    return "до 22:00 сегодняшнего дня"
+
+
+async def _show_day_closed_message(target: types.Message | types.CallbackQuery) -> None:
+    await _answer_private_with_actions(
+        target,
+        "🔥 <b>День закрыт.</b>\n\n"
+        "Отчет за этот день уже сдан, LedoScore зафиксирован.\n"
+        "На сегодня все — выдохни, сохрани темп и возвращайся завтра за новым сильным днем 🚀",
+        inline_markup=back_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
+        inline_text="Вернуться в группу можно здесь 👇",
+    )
+
+
+async def _show_saved_day_message(
+    target: types.Message | types.CallbackQuery,
+    tasks_text: str,
+    deadline_text: str,
+) -> None:
+    await _answer_private_with_actions(
+        target,
+        "📌 <b>Твой день уже зафиксирован:</b>\n\n"
+        f"{tasks_text}\n\n"
+        f"До {deadline_text.replace('до ', '')} сдай отчет за этот день.\n"
+        "За отчет ты получишь LedoScore и поднимешься в рейтинге 👇",
+        inline_markup=back_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
+        inline_text="Вернуться в группу можно здесь 👇",
+    )
+
+
+async def _show_day_intro(
+    target: types.Message | types.CallbackQuery,
+    week_hint: str,
+    deadline_text: str,
+) -> None:
+    await _answer_private_with_actions(
+        target,
+        "Отлично 🔥\n\n"
+        "Теперь твоя задача — разложить этот день на конкретные действия.\n\n"
+        "Важно:\n"
+        f"задачи на этот день действуют {deadline_text}.\n"
+        "Именно по ним вечером ты будешь сдавать отчет.\n\n"
+        f"Сегодняшний фокус из твоего 5-дневного плана:\n📍 <i>{week_hint}</i>\n\n"
+        "Если готов — жми кнопку ниже 👇",
+        inline_markup=day_start_keyboard(),
+        inline_text="Если пока не хочешь собирать день — можешь вернуться в группу 👇",
+    )
+
+
+async def _show_task_prompt(
+    target: types.Message | types.CallbackQuery,
+    task_number: int,
+) -> None:
+    prompts = {
+        1: "Напиши задачу №1 на этот день.\n\nОдна задача = одно конкретное действие, которое можно либо сделать, либо не сделать.",
+        2: "Теперь напиши задачу №2.\n\nЕсли одной сильной задачи на день достаточно — потом сможешь нажать «Пропустить».",
+        3: "Теперь напиши задачу №3.\n\nЛучший темп и максимальный LedoScore обычно собираются, когда день честно разложен на 3 понятные задачи.",
+    }
+    await _answer_private_with_actions(
+        target,
+        prompts.get(task_number, "Напиши следующую задачу 👇"),
+        inline_markup=back_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
+        inline_text="Если передумал — вернуться в группу можно здесь 👇",
+    )
+
+
+async def _show_day_review(target: types.Message | types.CallbackQuery, tasks: list[str]) -> None:
+    tasks_text = "\n".join(f"{idx}. {task}" for idx, task in enumerate(tasks, 1))
+    await _answer_private_with_actions(
+        target,
+        "🧠 <b>Проверь задачи на день:</b>\n\n"
+        f"{tasks_text}\n\n"
+        "Если все ок — подтверждай.\nЕсли хочешь собрать день заново — жми изменить.",
+        inline_markup=day_task_review_keyboard(),
+        inline_text="Выбери, что делать дальше 👇",
+    )
 
 
 async def _delete_private_message_safely(message: types.Message) -> None:
@@ -161,45 +257,36 @@ async def _start_day_flow(message: types.Message, state: FSMContext) -> None:
         )
         return
 
-    today = datetime.now().date().isoformat()
+    today = _club_day_date()
+    deadline_text = _club_day_deadline_text()
     today_lock = await cache.get_data(cache.KeyManager.get_day_plan_lock_key(message.from_user.id, today))
     today_tasks = await database.get_today_tasks(user["id"], today)
+    existing_report = await database.get_daily_report(user["id"], today)
+
+    if existing_report and str(existing_report.get("status") or "").lower() not in {"redo_requested", "rejected"}:
+        await _show_day_closed_message(message)
+        return
 
     if today_tasks or today_lock:
         tasks_text = "\n".join(
             f"{idx}. {task.get('task_text', '')}" for idx, task in enumerate(today_tasks[:3], 1)
         ) or "Пока задачи не найдены в базе, но дневной слот уже зафиксирован."
-        await _answer_private_with_actions(
-            message,
-            "📅 <b>Твой день уже собран.</b>\n\n"
-            "На сегодня у тебя зафиксированы такие задачи:\n"
-            f"{tasks_text}\n\n"
-            "Сейчас не нужно перепридумывать день заново.\n"
-            "Когда будешь готов — вернись и сдай отчет 📤",
-            inline_markup=back_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
-            inline_text="Если хочешь продолжить уже в группе, вот быстрый переход 👇",
-        )
+        await _show_saved_day_message(message, tasks_text, deadline_text)
         return
 
     milestones = active_goal.get("milestones") or []
     week_hint = milestones[0] if milestones else "выбери 3 действия, которые реально двигают тебя к месячной цели"
 
     await state.clear()
-    await state.set_state(TaskStates.waiting_day_tasks)
-    await state.update_data(day_goal_id=active_goal["id"])
-    await _answer_private_with_actions(
-        message,
-        "📅 <b>Мой день (до 3х задач)</b>\n\n"
-        "Теперь превращаем большую цель в действия на сегодня.\n\n"
-        "Что важно:\n"
-        "• максимум <b>3 задачи</b>\n"
-        "• каждая задача — отдельной строкой\n"
-        "• задачи должны быть конкретными, чтобы вечером ты честно понял, сделал или нет\n\n"
-        f"Подсказка по твоему недельному фокусу:\n<i>{week_hint}</i>\n\n"
-        "Отправь <b>3 задачи</b> одним сообщением, каждую с новой строки 👇",
-        inline_markup=back_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
-        inline_text="Если пока не хочешь собирать день — можешь вернуться в группу 👇",
+    await state.set_state(TaskStates.waiting_task_text)
+    await state.update_data(
+        day_goal_id=active_goal["id"],
+        day_tasks=[],
+        day_task_step=0,
+        day_operational_date=today,
+        day_week_hint=week_hint,
     )
+    await _show_day_intro(message, week_hint, deadline_text)
 
 
 @router.message(CommandStart())
@@ -343,6 +430,175 @@ async def show_or_start_day(message: types.Message, state: FSMContext) -> None:
     """Entry point from reply keyboard to today's 3-task flow."""
     await _delete_private_message_safely(message)
     await _start_day_flow(message, state)
+
+
+@router.callback_query(TaskStates.waiting_task_text, F.data == "day_go")
+async def start_day_task_collection(query: types.CallbackQuery, state: FSMContext) -> None:
+    await state.update_data(day_task_step=1, day_tasks=[])
+    await state.set_state(TaskStates.collecting_day_tasks)
+    await _show_task_prompt(query, 1)
+    await query.answer()
+
+
+@router.callback_query(TaskStates.waiting_task_text, F.data == "day_tomorrow")
+async def postpone_day_to_tomorrow(query: types.CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    await _answer_private_with_actions(
+        query,
+        "Хорошо.\n\n"
+        "Сегодня не насилуем себя фальшивой продуктивностью.\n"
+        "Отдохни, а завтра вернись и собери новый день с ясной головой ✨",
+        inline_markup=back_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
+        inline_text="Вернуться в группу можно здесь 👇",
+    )
+    await query.answer()
+
+
+@router.message(TaskStates.collecting_day_tasks)
+async def collect_day_task_text(message: types.Message, state: FSMContext) -> None:
+    task_text = (message.text or "").strip()
+    if len(task_text) < 3:
+        await message.answer("🤏 Напиши задачу чуть конкретнее, чтобы вечером было честно понятно: сделал или нет.")
+        return
+
+    data = await state.get_data()
+    current_step = int(data.get("day_task_step") or 1)
+    tasks = list(data.get("day_tasks") or [])
+
+    while len(tasks) < current_step - 1:
+        tasks.append("")
+    if len(tasks) >= current_step:
+        tasks[current_step - 1] = task_text
+    else:
+        tasks.append(task_text)
+
+    await state.update_data(day_tasks=tasks)
+
+    if current_step >= 3:
+        await state.set_state(TaskStates.reviewing_day_tasks)
+        await _show_day_review(message, tasks)
+        return
+
+    await _answer_private_with_actions(
+        message,
+        "⚠️ <b>Важно:</b>\n\n"
+        "Здесь решает не количество задач, а дисциплина.\n\n"
+        "📅 Каждый день у тебя есть до 3 задач — это твой фокус\n"
+        "🎯 Но баллы ты получаешь не за задачи, а за отчёт\n\n"
+        "📤 Сдал отчёт → получил баллы\n"
+        "🚫 Не сдал → день не засчитан\n\n"
+        "❌ Не выдумывай задачи ради галочки\n"
+        "✔️ Делай реальные вещи и честно отчитывайся\n\n"
+        "📈 Важно только одно: ты идёшь к своей цели или нет\n\n"
+        f"Теперь задача №{current_step + 1}",
+        inline_markup=day_task_next_keyboard(current_step + 1),
+    )
+
+
+@router.callback_query(TaskStates.collecting_day_tasks, F.data.startswith("day_task_next:"))
+async def open_next_day_task(query: types.CallbackQuery, state: FSMContext) -> None:
+    next_task_number = int(query.data.split(":")[1])
+    await state.update_data(day_task_step=next_task_number)
+    await _show_task_prompt(query, next_task_number)
+    await query.answer()
+
+
+@router.callback_query(TaskStates.collecting_day_tasks, F.data == "day_task_skip")
+async def skip_remaining_day_tasks(query: types.CallbackQuery, state: FSMContext) -> None:
+    data = await state.get_data()
+    tasks = [task for task in list(data.get("day_tasks") or []) if task]
+    await state.set_state(TaskStates.reviewing_day_tasks)
+    await _show_day_review(query, tasks)
+    await query.answer()
+
+
+@router.callback_query(TaskStates.reviewing_day_tasks, F.data == "day_tasks_edit")
+async def restart_day_task_collection(query: types.CallbackQuery, state: FSMContext) -> None:
+    await state.update_data(day_tasks=[], day_task_step=1)
+    await state.set_state(TaskStates.collecting_day_tasks)
+    await _show_task_prompt(query, 1)
+    await query.answer()
+
+
+@router.callback_query(TaskStates.reviewing_day_tasks, F.data == "day_tasks_confirm")
+async def confirm_day_tasks(query: types.CallbackQuery, state: FSMContext) -> None:
+    data = await state.get_data()
+    tasks = [task for task in list(data.get("day_tasks") or []) if task]
+    if not tasks:
+        await query.answer("Сначала собери хотя бы одну задачу.", show_alert=True)
+        return
+
+    club_user = await database.ensure_club_user(
+        telegram_id=query.from_user.id,
+        username=query.from_user.username,
+        first_name=query.from_user.first_name,
+        language_code=query.from_user.language_code or "ru",
+    )
+    if not club_user:
+        await query.answer("Не удалось подготовить профиль участника.", show_alert=True)
+        return
+
+    operational_date = str(data.get("day_operational_date") or _club_day_date())
+    goal_id = data.get("day_goal_id")
+    for idx, task_text in enumerate(tasks, 1):
+        await database.create_task(
+            club_user["id"],
+            task_text,
+            operational_date,
+            task_type=f"day_{idx}",
+            goal_id=goal_id,
+        )
+
+    await cache.set_data(
+        cache.KeyManager.get_day_plan_lock_key(query.from_user.id, operational_date),
+        "1",
+        ex=cache.seconds_until_next_22(),
+    )
+
+    await state.clear()
+    await _show_saved_day_message(
+        query,
+        "\n".join(f"{idx}. {task}" for idx, task in enumerate(tasks, 1)),
+        _club_day_deadline_text(),
+    )
+    await query.answer("Задачи на день зафиксированы ✅")
+
+
+@router.callback_query(
+    (TaskStates.waiting_task_text | TaskStates.collecting_day_tasks | TaskStates.reviewing_day_tasks),
+    F.data == "flow_back",
+)
+async def handle_day_flow_back(query: types.CallbackQuery, state: FSMContext) -> None:
+    data = await state.get_data()
+    current_state = await state.get_state()
+    tasks = list(data.get("day_tasks") or [])
+    week_hint = str(data.get("day_week_hint") or "собери сильный день без перегруза")
+
+    if current_state == TaskStates.waiting_task_text.state:
+        await _show_day_intro(query, week_hint, _club_day_deadline_text())
+        await query.answer()
+        return
+
+    if current_state == TaskStates.collecting_day_tasks.state:
+        if tasks:
+            tasks.pop()
+        next_step = max(len(tasks) + 1, 1)
+        await state.update_data(day_tasks=tasks, day_task_step=next_step)
+        await _show_task_prompt(query, next_step)
+        await query.answer()
+        return
+
+    if current_state == TaskStates.reviewing_day_tasks.state:
+        if tasks:
+            tasks.pop()
+        next_step = max(len(tasks) + 1, 1)
+        await state.update_data(day_tasks=tasks, day_task_step=next_step)
+        await state.set_state(TaskStates.collecting_day_tasks)
+        await _show_task_prompt(query, next_step)
+        await query.answer()
+        return
+
+    await query.answer()
 
 
 @router.message(GoalStates.waiting_goal_text)

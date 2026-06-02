@@ -5,7 +5,7 @@ Group business club handlers.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
@@ -25,7 +25,11 @@ router = Router()
 
 
 def _today() -> str:
-    return datetime.now().date().isoformat()
+    now = datetime.now()
+    if now.hour >= 22:
+        now = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        now = now + timedelta(days=1)
+    return now.date().isoformat()
 
 
 def _last_group_chat_key(user_id: int) -> str:
