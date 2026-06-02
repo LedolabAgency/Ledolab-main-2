@@ -161,7 +161,7 @@ def _build_goal_review(goal_text: str, milestones: list[str]) -> str:
         "🎯 <b>Твоя большая цель на 30 дней:</b>",
         goal_text,
         "",
-        "📅 <b>Фокус на ближайшие 7 дней:</b>",
+        "📅 <b>Фокус на ближайшие 5 дней:</b>",
     ]
     for idx, milestone in enumerate(milestones, 1):
         lines.append(f"{idx}. {milestone}")
@@ -193,7 +193,7 @@ async def _start_goal_flow(message: types.Message, state: FSMContext) -> None:
     if not await database.has_completed_quiz(message.from_user.id):
         await message.answer(
             "🧭 Сначала пройди квиз, чтобы я понял, на каком ты этапе и как тебя правильно вести дальше.\n\n"
-            "После квиза откроются цель на 30 дней, план на 7 дней и дневные задачи 👇",
+            "После квиза откроются цель на 30 дней, план на 5 дней и дневные задачи 👇",
             reply_markup=quiz_reply_keyboard(WEB_APP_URL),
         )
         return
@@ -220,7 +220,7 @@ async def _start_goal_flow(message: types.Message, state: FSMContext) -> None:
         "Сейчас мы спокойно соберем твой маршрут на ближайшие <b>30 дней</b>.\n\n"
         "Как это работает:\n"
         "1. Ты ставишь <b>1 главную цель</b> на месяц\n"
-        "2. Потом разбиваешь ее на <b>7 ближайших дней</b>\n"
+        "2. Потом разбиваешь ее на <b>5 ближайших дней</b>\n"
         "3. А уже после этого превращаешь каждый день в <b>до 3 конкретных задач</b>\n\n"
         "Не усложняй и не пиши все сразу.\n"
         "Сейчас нужен только один понятный ориентир, к которому ты реально хочешь прийти 🔥\n\n"
@@ -381,14 +381,13 @@ async def show_30_day_goal(message: types.Message) -> None:
     )
 
 
-@router.message(F.text == "📅 Мой план на 7 дней")
 @router.message(F.text == "📅 Мой план на 5 дней")
 async def show_7_day_plan(message: types.Message) -> None:
     """Show the saved weekly plan as a reminder."""
     await _delete_private_message_safely(message)
     if not await database.has_completed_quiz(message.from_user.id):
         await message.answer(
-            "🧭 Сначала пройди квиз. Потом я покажу тебе и большую цель, и план на 7 дней 👇",
+            "🧭 Сначала пройди квиз. Потом я покажу тебе и большую цель, и план на 5 дней 👇",
             reply_markup=quiz_reply_keyboard(WEB_APP_URL),
         )
         return
@@ -400,15 +399,15 @@ async def show_7_day_plan(message: types.Message) -> None:
 
     active_goal = await database.get_active_goal(user["id"])
     if not active_goal:
-        await message.answer("Пока 7-дневный план не собран. Начни с `🎯 Моя цель (30 дней)`.")
+        await message.answer("Пока 5-дневный план не собран. Начни с `🎯 Моя цель (30 дней)`.")
         return
 
     milestones = active_goal.get("milestones") or []
     if not milestones:
-        await message.answer("Пока не вижу сохраненного плана на 7 дней. Давай соберем его заново через цель.")
+        await message.answer("Пока не вижу сохраненного плана на 5 дней. Давай соберем его заново через цель.")
         return
 
-    lines = ["📅 <b>Твой план на 7 дней</b>\n"]
+    lines = ["📅 <b>Твой план на 5 дней</b>\n"]
     for idx, milestone in enumerate(milestones, 1):
         lines.append(f"{idx}. {milestone}")
     lines.extend(
@@ -614,7 +613,7 @@ async def handle_goal_text(message: types.Message, state: FSMContext) -> None:
         message,
         "🔥 <b>Отлично. Большую цель зафиксировали.</b>\n\n"
         "Теперь не пытаемся расписать весь месяц сразу.\n"
-        "Сейчас собираем <b>7 ближайших дней</b> — это не мелкие таски, а понятные дневные фокусы.\n\n"
+        "Сейчас собираем <b>5 ближайших дней</b> — это не мелкие таски, а понятные дневные фокусы.\n\n"
         "Нажми кнопку ниже, и мы спокойно начнем с первого дня 👇",
         inline_markup=goal_day_step_keyboard(1),
     )
@@ -623,7 +622,7 @@ async def handle_goal_text(message: types.Message, state: FSMContext) -> None:
 @router.callback_query(GoalStates.waiting_day_text, F.data.startswith("goal_day:"))
 @router.callback_query(GoalStates.reviewing, F.data.startswith("goal_day:"))
 async def open_goal_day_step(query: types.CallbackQuery, state: FSMContext) -> None:
-    """Open a specific 7-day milestone step."""
+    """Open a specific 5-day milestone step."""
     day_number = int(query.data.split(":")[1])
     data = await state.get_data()
     milestones = data.get("milestones", [])
@@ -638,8 +637,7 @@ async def open_goal_day_step(query: types.CallbackQuery, state: FSMContext) -> N
         3: "📍 <b>День 3</b>\n\nХорошо идем 🔥\nСейчас нужен главный фокус на третий день.",
         4: "📍 <b>День 4</b>\n\nУже появляется настоящий маршрут, а не просто желание.\nНапиши цель на четвертый день 👇",
         5: "📍 <b>День 5</b>\n\nСупер. Чем яснее маршрут, тем легче реально дойти до результата.\nНапиши фокус на пятый день.",
-        6: "📍 <b>День 6</b>\n\nТы уже почти собрал недельный спринт.\nНапиши главную цель на шестой день 👇",
-        7: "📍 <b>День 7</b>\n\nФинальный штрих недели.\nЗафиксируй седьмой день, и я покажу тебе весь маршрут целиком для проверки.",
+        
     }
     await _answer_private_with_actions(
         query,
@@ -653,7 +651,7 @@ async def open_goal_day_step(query: types.CallbackQuery, state: FSMContext) -> N
 @router.message(GoalStates.waiting_day_text)
 @router.message(GoalStates.editing_day)
 async def save_goal_day_text(message: types.Message, state: FSMContext) -> None:
-    """Save or edit one of the seven day focuses."""
+    """Save or edit one of the five day focuses."""
     day_text = (message.text or "").strip()
     if len(day_text) < 3:
         await message.answer("🤏 Напиши чуть подробнее, чтобы фокус дня был понятным и конкретным.")
@@ -669,7 +667,7 @@ async def save_goal_day_text(message: types.Message, state: FSMContext) -> None:
 
     await state.update_data(milestones=milestones)
 
-    if day_number < 7 and all(milestones[:day_number]):
+    if day_number < 5 and all(milestones[:day_number]):
         await state.update_data(editing_day=None)
         await state.set_state(GoalStates.waiting_day_text)
         await _answer_private_with_actions(
@@ -680,7 +678,7 @@ async def save_goal_day_text(message: types.Message, state: FSMContext) -> None:
         )
         return
 
-    if all(milestones[:7]) and len(milestones) >= 7:
+    if all(milestones[:5]) and len(milestones) >= 5:
         await state.update_data(editing_day=None)
         await state.set_state(GoalStates.reviewing)
         await _show_goal_review(message, state)
@@ -698,7 +696,7 @@ async def save_goal_day_text(message: types.Message, state: FSMContext) -> None:
 
 @router.callback_query(GoalStates.reviewing, F.data == "goal_edit")
 async def edit_goal_days(query: types.CallbackQuery, state: FSMContext) -> None:
-    """Open selective editing for one of the 7 days."""
+    """Open selective editing for one of the 5 days."""
     await _answer_private_with_actions(
         query,
         "✏️ Выбери день, который хочешь поправить.\n\n"
@@ -714,7 +712,7 @@ async def confirm_goal_flow(query: types.CallbackQuery, state: FSMContext) -> No
     data = await state.get_data()
     goal_text = data.get("goal_text", "").strip()
     milestones = [item.strip() for item in data.get("milestones", []) if item.strip()]
-    if not goal_text or len(milestones) < 7:
+    if not goal_text or len(milestones) < 5:
         await query.answer("Не хватает данных для сохранения.", show_alert=True)
         return
 
@@ -738,7 +736,7 @@ async def confirm_goal_flow(query: types.CallbackQuery, state: FSMContext) -> No
         await cache.set_data(
             cache.KeyManager.get_goal_day_lock_key(query.from_user.id, day_number),
             milestone,
-            ex=7 * 24 * 60 * 60,
+            ex=cache.seconds_until_next_sunday_21(),
         )
 
     if REPORTS_GROUP_ID:
@@ -750,7 +748,7 @@ async def confirm_goal_flow(query: types.CallbackQuery, state: FSMContext) -> No
             "🎯 <b>Цель на 30 дней:</b>",
             goal_text,
             "",
-            "📅 <b>Фокус на ближайшие 7 дней:</b>",
+            "📅 <b>Фокус на ближайшие 5 дней:</b>",
         ]
         for idx, milestone in enumerate(milestones, 1):
             group_text_lines.append(f"{idx}. {milestone}")
@@ -770,7 +768,7 @@ async def confirm_goal_flow(query: types.CallbackQuery, state: FSMContext) -> No
     me = await query.bot.get_me()
     await _answer_private_with_actions(
         query,
-        "🚀 <b>Готово. Твоя большая цель и 7-дневный маршрут зафиксированы.</b>\n\n"
+        "🚀 <b>Готово. Твоя большая цель и 5-дневный маршрут зафиксированы.</b>\n\n"
         "Теперь у тебя есть не просто желание, а понятный план движения.\n\n"
         "Если готов уже <b>сегодня</b> начать выполнять поставленные цели — нажимай кнопку\n"
         "<b>📅 Мой день (до 3х задач)</b>.\n\n"
