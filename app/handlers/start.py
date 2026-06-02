@@ -25,7 +25,8 @@ from app.keyboards.inline.start import (
     private_hub_reply_keyboard,
     quiz_reply_keyboard,
 )
-from app.states.quiz import GoalStates, TaskStates
+from app.services import report_service
+from app.states.quiz import GoalStates, ReportStates, TaskStates
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -121,6 +122,58 @@ async def _show_day_review(target: types.Message | types.CallbackQuery, tasks: l
         "Если все ок — подтверждай.\nЕсли хочешь собрать день заново — жми изменить.",
         inline_markup=day_task_review_keyboard(),
         inline_text="Выбери, что делать дальше 👇",
+    )
+
+
+async def _start_report_flow(message: types.Message, state: FSMContext) -> None:
+    if not await database.has_completed_quiz(message.from_user.id):
+        await message.answer(
+            "🧭 Сначала пройди квиз — после него откроются рабочие сценарии и отчет 👇",
+            reply_markup=quiz_reply_keyboard(WEB_APP_URL),
+        )
+        return
+
+    user = await database.ensure_club_user(
+        telegram_id=message.from_user.id,
+        username=message.from_user.username,
+        first_name=message.from_user.first_name,
+        language_code=message.from_user.language_code or "ru",
+    )
+    if not user:
+        await message.answer("❌ Не удалось подготовить твой профиль. Попробуй еще раз чуть позже.")
+        return
+
+    report_date = _club_day_date()
+    tasks = await database.get_today_tasks(user["id"], report_date)
+    if not tasks:
+        await _answer_private_with_actions(
+            message,
+            "📭 На этот день у тебя пока нет зафиксированных задач.\n\n"
+            "Сначала собери `📌 Мой день (до 3х задач)`, а потом возвращайся к отчету.",
+            inline_markup=back_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
+            inline_text="Вернуться в группу можно здесь 👇",
+        )
+        return
+
+    existing_report = await database.get_daily_report(user["id"], report_date)
+    if existing_report and str(existing_report.get("status") or "").lower() not in {"redo_requested", "rejected"}:
+        await _show_day_closed_message(message)
+        return
+
+    task_texts = [str(task.get("task_text") or "").strip() for task in tasks[:3] if str(task.get("task_text") or "").strip()]
+    await state.clear()
+    await state.set_state(ReportStates.waiting_proof)
+    await state.update_data(
+        report_user_id=user["id"],
+        report_date=report_date,
+        report_tasks=task_texts,
+        report_file_id=None,
+    )
+    await _answer_private_with_actions(
+        message,
+        report_service.report_intro_text(task_texts),
+        inline_markup=back_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
+        inline_text="Если передумал — вернуться в группу можно здесь 👇",
     )
 
 
@@ -321,6 +374,10 @@ async def cmd_start(
             await _start_day_flow(message, state)
             return
 
+        if args == "report_setup" and state:
+            await _start_report_flow(message, state)
+            return
+
         has_quiz = await database.has_completed_quiz(user_id)
         if has_quiz:
             me = await message.bot.get_me()
@@ -429,6 +486,109 @@ async def show_or_start_day(message: types.Message, state: FSMContext) -> None:
     """Entry point from reply keyboard to today's 3-task flow."""
     await _delete_private_message_safely(message)
     await _start_day_flow(message, state)
+
+
+@router.message(F.video_note, ReportStates.waiting_proof)
+async def save_report_video_note(message: types.Message, state: FSMContext) -> None:
+    await state.update_data(report_file_id=message.video_note.file_id)
+    await state.set_state(ReportStates.reviewing)
+    await _answer_private_with_actions(
+        message,
+        "Кружочек записан ✅\n\nЕсли все ок — подтверждай. Если хочешь переписать, жми заменить.",
+        inline_markup=report_service.report_preview_keyboard(),
+        inline_text="Выбери, что делать дальше 👇",
+    )
+
+
+@router.message(ReportStates.waiting_proof)
+async def reject_non_video_report(message: types.Message) -> None:
+    await message.answer(
+        "Нужен именно кружочек.\nИ помни: в Telegram кружочек длится до 1 минуты."
+    )
+
+
+@router.callback_query(ReportStates.reviewing, F.data == "report_redo")
+async def redo_report_video_note(query: types.CallbackQuery, state: FSMContext) -> None:
+    await state.update_data(report_file_id=None)
+    await state.set_state(ReportStates.waiting_proof)
+    await _answer_private_with_actions(
+        query,
+        "Запиши один кружочек до 1 минуты, где коротко расскажешь, что сделал по всем задачам 👇",
+        inline_markup=back_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
+        inline_text="Если передумал — вернуться в группу можно здесь 👇",
+    )
+    await query.answer()
+
+
+@router.callback_query(ReportStates.reviewing, F.data == "report_send")
+async def send_daily_report(query: types.CallbackQuery, state: FSMContext) -> None:
+    data = await state.get_data()
+    report_user_id = data.get("report_user_id")
+    report_date = str(data.get("report_date") or _club_day_date())
+    task_texts = [str(task) for task in list(data.get("report_tasks") or []) if str(task).strip()]
+    report_file_id = data.get("report_file_id")
+
+    if not report_user_id or not task_texts or not report_file_id:
+        await query.answer("Не хватает данных для отправки отчета.", show_alert=True)
+        return
+
+    club_user = await database.get_club_user(query.from_user.id)
+    if not club_user:
+        await query.answer("Не удалось найти твой профиль.", show_alert=True)
+        return
+
+    entries = [{
+        "task_text": "Общий отчет за день",
+        "task_lines": task_texts,
+        "proof_type": "video_note",
+        "file_id": report_file_id,
+        "comment_text": "",
+    }]
+    report = await report_service.save_daily_report(
+        user_id=report_user_id,
+        telegram_id=query.from_user.id,
+        username=club_user.get("username"),
+        report_date=report_date,
+        entries=entries,
+    )
+    if not report:
+        await query.answer("Не удалось сохранить отчет.", show_alert=True)
+        return
+
+    target_group_id = REPORTS_GROUP_ID
+    if not target_group_id:
+        last_group_chat = await cache.get_data(f"last_group_chat:{query.from_user.id}")
+        target_group_id = int(last_group_chat) if last_group_chat else None
+
+    if target_group_id:
+        summary_message = await query.bot.send_message(
+            chat_id=target_group_id,
+            text=report["summary_text"],
+            reply_markup=report_service.group_report_vote_keyboard(report["id"]),
+        )
+        await database.set_daily_report_group_post(report["id"], target_group_id, summary_message.message_id)
+        try:
+            await query.bot.send_video_note(
+                chat_id=target_group_id,
+                video_note=report_file_id,
+                reply_to_message_id=summary_message.message_id,
+            )
+        except Exception as exc:
+            logger.warning("Failed to send report video note to group | user=%s error=%s", query.from_user.id, exc)
+
+    await state.clear()
+    await _answer_private_with_actions(
+        query,
+        "🔥 Отчет отправлен.\n\n"
+        f"База за отчет: +30 LedoScore.\n"
+        f"Бонус за стрик: +{int(report.get('streak_bonus') or 0)}.\n"
+        f"Итого за этот отчет: +{int(report.get('score_awarded') or 0)} LedoScore.\n"
+        f"Текущий стрик: {int(report.get('current_streak') or 0)} дн.\n"
+        f"Общий баланс: {int(report.get('total_ledoscore') or 0)} LedoScore.",
+        inline_markup=back_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
+        inline_text="Вернуться в группу можно здесь 👇",
+    )
+    await query.answer("Отчет отправлен ✅")
 
 
 @router.callback_query(TaskStates.waiting_task_text, F.data == "day_go")
