@@ -143,7 +143,7 @@ async def _start_day_flow(message: types.Message, state: FSMContext) -> None:
         )
         return
 
-    user = await database.ensure_user(
+    user = await database.ensure_club_user(
         telegram_id=message.from_user.id,
         username=message.from_user.username,
         first_name=message.from_user.first_name,
@@ -274,7 +274,7 @@ async def show_30_day_goal(message: types.Message) -> None:
         )
         return
 
-    user = await database.get_user(message.from_user.id)
+    user = await database.get_club_user(message.from_user.id)
     if not user:
         await message.answer("Сначала пройди стартовый путь в боте, чтобы мы могли сохранить твою цель.")
         return
@@ -306,7 +306,7 @@ async def show_7_day_plan(message: types.Message) -> None:
         )
         return
 
-    user = await database.get_user(message.from_user.id)
+    user = await database.get_club_user(message.from_user.id)
     if not user:
         await message.answer("Сначала пройди стартовый путь в боте, чтобы мы могли сохранить твой план.")
         return
@@ -463,7 +463,7 @@ async def confirm_goal_flow(query: types.CallbackQuery, state: FSMContext) -> No
         await query.answer("Не хватает данных для сохранения.", show_alert=True)
         return
 
-    user = await database.ensure_user(
+    user = await database.ensure_club_user(
         telegram_id=query.from_user.id,
         username=query.from_user.username,
         first_name=query.from_user.first_name,
