@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
+from html import escape
 
 from aiogram import F, Router, types
 from aiogram.filters import CommandObject, CommandStart
@@ -713,6 +714,35 @@ async def confirm_day_tasks(query: types.CallbackQuery, state: FSMContext) -> No
         "1",
         ex=cache.seconds_until_next_22(),
     )
+
+    target_group_id = REPORTS_GROUP_ID
+    if not target_group_id:
+        last_group_chat = await cache.get_data(f"last_group_chat:{query.from_user.id}")
+        target_group_id = int(last_group_chat) if last_group_chat else None
+
+    if target_group_id:
+        user_label = (
+            f"@{club_user['username']}"
+            if club_user.get("username")
+            else escape(str(club_user.get("first_name") or query.from_user.first_name or "Участник"))
+        )
+        day_summary = [
+            f"📌 {user_label} зафиксировал свой день",
+            "",
+            "Задачи на этот день:",
+        ]
+        for idx, task in enumerate(tasks, 1):
+            day_summary.append(f"{idx}. {escape(task)}")
+        day_summary.extend(
+            [
+                "",
+                "Вечером до 22:00 он сдаст отчет и зафиксирует свой LedoScore 🔥",
+            ]
+        )
+        try:
+            await query.bot.send_message(target_group_id, "\n".join(day_summary))
+        except Exception as exc:
+            logger.warning("Failed to post day plan to group | user=%s error=%s", query.from_user.id, exc)
 
     await state.clear()
     await _show_saved_day_message(

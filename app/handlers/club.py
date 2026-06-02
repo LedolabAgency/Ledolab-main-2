@@ -137,6 +137,7 @@ async def open_day_view(query: types.CallbackQuery, state: FSMContext) -> None:
     if not await _ensure_quiz_for_query(query):
         return
 
+    await cache.set_data(_last_group_chat_key(query.from_user.id), str(query.message.chat.id), ex=7 * 24 * 60 * 60)
     logger.info("GROUP day button | user=%s chat=%s", query.from_user.id, query.message.chat.id)
     me = await query.bot.get_me()
     sent = await query.message.answer(
