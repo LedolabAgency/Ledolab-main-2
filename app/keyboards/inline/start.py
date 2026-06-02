@@ -174,6 +174,24 @@ def goal_edit_days_keyboard() -> types.InlineKeyboardMarkup:
     )
 
 
+def after_goal_confirm_keyboard(
+    bot_username: str,
+    group_url: str | None = None,
+) -> types.InlineKeyboardMarkup:
+    """Actions shown after the full goal plan is confirmed."""
+    rows: list[list[types.InlineKeyboardButton]] = [
+        [
+            types.InlineKeyboardButton(
+                text="📅 Мой день (до 3х задач)",
+                url=f"https://t.me/{bot_username}?start=day_setup",
+            )
+        ]
+    ]
+    if group_url:
+        rows.append([types.InlineKeyboardButton(text="↩️ Вернуться в группу", url=group_url)])
+    return types.InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def goal_ready_keyboard() -> types.InlineKeyboardMarkup:
     """Ask whether the user is ready to start today."""
     return types.InlineKeyboardMarkup(
