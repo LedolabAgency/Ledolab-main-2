@@ -353,6 +353,9 @@ async def reject_report_by_admin(query: types.CallbackQuery) -> None:
 
     await database.set_daily_report_status(report_id, "rejected")
     await database.award_score(report["user_id"], -int(report.get("score_awarded") or 30), "Daily report rejected by admin")
+    bonus_awarded = report_service.get_report_bonus_awarded(report)
+    if bonus_awarded > 0:
+        await database.award_score(report["user_id"], -bonus_awarded, "LedoBonus revoked after reject")
     warnings = await database.increment_user_warnings(report["user_id"], 3)
     if int((warnings or {}).get("warnings_count") or 0) >= 2:
         await database.award_score(report["user_id"], -report_service.WARNING_SCORE_PENALTY, "Warning penalty")
@@ -411,6 +414,9 @@ async def save_admin_report_comment(message: types.Message, state: FSMContext) -
     comment_text = (message.text or "").strip()
     await database.set_daily_report_status(report_id, "redo_requested", admin_comment=comment_text)
     await database.award_score(report["user_id"], -int(report.get("score_awarded") or 30), "Daily report sent back for redo")
+    bonus_awarded = report_service.get_report_bonus_awarded(report)
+    if bonus_awarded > 0:
+        await database.award_score(report["user_id"], -bonus_awarded, "LedoBonus revoked after redo")
 
     user_info = await database.get_club_user_by_id(report["user_id"])
     if user_info and user_info.get("telegram_id"):

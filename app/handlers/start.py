@@ -614,14 +614,29 @@ async def send_daily_report(query: types.CallbackQuery, state: FSMContext) -> No
     )
 
     await state.clear()
+    bonus_awarded = int(report.get("bonus_awarded") or 0)
+    streak_day = int(report.get("current_streak") or 0)
+    total_ledoscore = int(report.get("total_ledoscore") or 0)
+    total_ledobonus = int(report.get("total_ledobonus") or 0)
+    bonus_line = (
+        f"+{bonus_awarded} LedoBonus за день {streak_day} из 5.\n"
+        if bonus_awarded > 0 and streak_day > 0
+        else ""
+    )
+    closing_line = (
+        "\n🏆 Ты закрыл путь на 5 дней.\nСледующий отчет начнет новый путь с дня 1."
+        if streak_day >= 5
+        else ""
+    )
     await _answer_private_with_actions(
         query,
         "🔥 Отчет отправлен.\n\n"
-        f"База за отчет: +30 LedoScore.\n"
-        f"Бонус за стрик: +{int(report.get('streak_bonus') or 0)}.\n"
-        f"Итого за этот отчет: +{int(report.get('score_awarded') or 0)} LedoScore.\n"
-        f"Текущий стрик: {int(report.get('current_streak') or 0)} дн.\n"
-        f"Общий баланс: {int(report.get('total_ledoscore') or 0)} LedoScore.",
+        "+30 LedoScore за отчет.\n"
+        f"{bonus_line}"
+        f"День пути: {max(streak_day, 1)}/5.\n"
+        f"Общий LedoScore: {total_ledoscore}.\n"
+        f"Общий LedoBonus: {total_ledobonus}."
+        f"{closing_line}",
         inline_markup=back_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
         inline_text="Вернуться в группу можно здесь 👇",
     )

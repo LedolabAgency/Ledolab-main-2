@@ -1213,16 +1213,43 @@ async def get_user_total_score(user_id: int) -> int:
         sb = get_supabase()
         result = (
             sb.table("scores")
-            .select("points")
+            .select("points,reason")
             .eq("user_id", user_id)
             .execute()
         )
         
         if result.data:
-            return sum(record["points"] for record in result.data)
+            return sum(
+                int(record.get("points") or 0)
+                for record in result.data
+                if not str(record.get("reason") or "").startswith("LedoBonus ")
+            )
         return 0
     except Exception as e:
         logger.error(f"Error getting score {user_id}: {e}", exc_info=True)
+        return 0
+
+
+async def get_user_total_bonus(user_id: int) -> int:
+    """Get user's total LedoBonus."""
+    try:
+        sb = get_supabase()
+        result = (
+            sb.table("scores")
+            .select("points,reason")
+            .eq("user_id", user_id)
+            .execute()
+        )
+
+        if result.data:
+            return sum(
+                int(record.get("points") or 0)
+                for record in result.data
+                if str(record.get("reason") or "").startswith("LedoBonus ")
+            )
+        return 0
+    except Exception as e:
+        logger.error(f"Error getting bonus {user_id}: {e}", exc_info=True)
         return 0
 
 
@@ -1271,7 +1298,7 @@ async def get_top_users_for_period(start_iso: str, end_iso: str, limit: int = 10
         ).data or []
         scores_rows = (
             sb.table("scores")
-            .select("user_id,points,created_at")
+            .select("user_id,points,created_at,reason")
             .gte("created_at", start_iso)
             .lt("created_at", end_iso)
             .execute()
@@ -1281,6 +1308,8 @@ async def get_top_users_for_period(start_iso: str, end_iso: str, limit: int = 10
         for row in scores_rows:
             user_id = row.get("user_id")
             if not user_id:
+                continue
+            if str(row.get("reason") or "").startswith("LedoBonus "):
                 continue
             totals[str(user_id)] = totals.get(str(user_id), 0) + int(row.get("points") or 0)
 

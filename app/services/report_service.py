@@ -18,10 +18,12 @@ logger = logging.getLogger(__name__)
 DAILY_REPORT_SCORE = 30
 SUSPICIOUS_FLAGS_THRESHOLD = 3
 WARNING_SCORE_PENALTY = 15
-STREAK_BONUSES = {
-    3: 10,
-    5: 25,
-    10: 50,
+LEDOBONUS_BY_DAY = {
+    1: 10,
+    2: 15,
+    3: 20,
+    4: 25,
+    5: 30,
 }
 
 
@@ -127,8 +129,10 @@ def build_group_summary(
     entries: List[Dict[str, Any]],
     *,
     score_awarded: Optional[int] = None,
+    bonus_awarded: Optional[int] = None,
     current_streak: Optional[int] = None,
     total_ledoscore: Optional[int] = None,
+    total_ledobonus: Optional[int] = None,
 ) -> str:
     author = f"@{username}" if username else "Участник клуба"
     safe_author = escape(str(author))
@@ -145,15 +149,25 @@ def build_group_summary(
         comment = (entry.get("comment_text") or "").strip()
         if comment:
             lines.append(f"💬 {escape(comment)}")
-    if score_awarded is not None or current_streak is not None or total_ledoscore is not None:
+    if (
+        score_awarded is not None
+        or bonus_awarded is not None
+        or current_streak is not None
+        or total_ledoscore is not None
+        or total_ledobonus is not None
+    ):
         lines.append("")
-        lines.append("📊 LedoScore:")
+        lines.append("📊 Результат дня:")
         if score_awarded is not None:
-            lines.append(f"За этот отчет: +{int(score_awarded)}")
+            lines.append(f"LedoScore: +{int(score_awarded)}")
+        if bonus_awarded is not None:
+            lines.append(f"LedoBonus: +{int(bonus_awarded)}")
         if current_streak is not None:
-            lines.append(f"Текущий стрик: {int(current_streak)} дн.")
+            lines.append(f"День пути: {int(current_streak)}/5")
         if total_ledoscore is not None:
-            lines.append(f"Общий баланс: {int(total_ledoscore)}")
+            lines.append(f"Общий LedoScore: {int(total_ledoscore)}")
+        if total_ledobonus is not None:
+            lines.append(f"Общий LedoBonus: {int(total_ledobonus)}")
     lines.append("")
     lines.append("Отчет отправлен в клуб.")
     return "\n".join(lines)
@@ -179,6 +193,22 @@ def build_admin_approved_summary(original_text: str) -> str:
     return original_text + "\n\n✅ Отчет проверен админом — все ок."
 
 
+def get_report_bonus_awarded(report: Dict[str, Any]) -> int:
+    payload = report.get("report_payload") or []
+    if not payload or not isinstance(payload, list):
+        return 0
+    first_entry = payload[0] or {}
+    return int(first_entry.get("bonus_awarded") or 0)
+
+
+def get_report_streak_day(report: Dict[str, Any]) -> int:
+    payload = report.get("report_payload") or []
+    if not payload or not isinstance(payload, list):
+        return 0
+    first_entry = payload[0] or {}
+    return int(first_entry.get("streak_day") or 0)
+
+
 async def save_daily_report(
     user_id: str,
     telegram_id: int,
@@ -186,7 +216,7 @@ async def save_daily_report(
     report_date: str,
     entries: List[Dict[str, Any]],
 ) -> Optional[Dict[str, Any]]:
-    """Persist and immediately award the base daily score."""
+    """Persist a daily report, award LedoScore and separate LedoBonus."""
     try:
         score_awarded = DAILY_REPORT_SCORE
         streak_key = cache.KeyManager.get_streak_key(telegram_id)
@@ -200,41 +230,53 @@ async def save_daily_report(
             report_dt = datetime.fromisoformat(report_date).date()
             if last_report_date:
                 last_dt = datetime.fromisoformat(last_report_date).date()
-                new_streak = current_streak + 1 if (report_dt - last_dt).days == 1 else 1
+                if (report_dt - last_dt).days == 1:
+                    new_streak = 1 if current_streak >= 5 else current_streak + 1
+                else:
+                    new_streak = 1
             else:
                 new_streak = 1
 
-        streak_bonus = STREAK_BONUSES.get(new_streak, 0)
-        score_awarded += streak_bonus
+        bonus_awarded = LEDOBONUS_BY_DAY.get(new_streak, 0)
+        entries_to_store = [dict(entry) for entry in entries]
+        if entries_to_store:
+            entries_to_store[0]["bonus_awarded"] = bonus_awarded
+            entries_to_store[0]["streak_day"] = new_streak
         tasks_snapshot = [entry["task_text"] for entry in entries]
         summary_text = build_group_summary(username, entries)
         report = await database.create_or_update_daily_report(
             user_id=user_id,
             report_date=report_date,
             tasks_snapshot=tasks_snapshot,
-            report_payload=entries,
+            report_payload=entries_to_store,
             summary_text=summary_text,
             score_awarded=score_awarded,
             status="approved",
         )
         if not report:
             return None
-        await database.award_score(user_id, score_awarded, f"Daily report submitted (streak {new_streak})")
+        await database.award_score(user_id, score_awarded, "Daily report submitted")
+        if bonus_awarded > 0:
+            await database.award_score(user_id, bonus_awarded, f"LedoBonus day {new_streak}")
         total_ledoscore = await database.get_user_total_score(user_id)
+        total_ledobonus = await database.get_user_total_bonus(user_id)
         await cache.set_data(streak_key, str(new_streak))
         await cache.set_data(last_report_key, report_date)
         summary_text = build_group_summary(
             username,
             entries,
             score_awarded=score_awarded,
+            bonus_awarded=bonus_awarded,
             current_streak=new_streak,
             total_ledoscore=total_ledoscore,
+            total_ledobonus=total_ledobonus,
         )
         await database.update_daily_report_summary_text(report["id"], summary_text)
         report["summary_text"] = summary_text
         report["current_streak"] = new_streak
-        report["streak_bonus"] = streak_bonus
+        report["bonus_awarded"] = bonus_awarded
         report["total_ledoscore"] = total_ledoscore
+        report["total_ledobonus"] = total_ledobonus
         return report
     except Exception as e:
         logger.error(f"Error saving daily report {user_id}: {e}", exc_info=True)
