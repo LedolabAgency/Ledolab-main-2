@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from html import escape
 
 from aiogram import F, Router, types
-from aiogram.filters import CommandObject, CommandStart
+from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
 
 from app import cache, database
@@ -17,6 +17,7 @@ from app.keyboards.inline.start import (
     back_to_group_keyboard,
     club_main_menu,
     day_start_keyboard,
+    referral_actions_keyboard,
     day_task_next_keyboard,
     day_task_review_keyboard,
     goal_day_step_keyboard,
@@ -26,7 +27,7 @@ from app.keyboards.inline.start import (
     private_hub_reply_keyboard,
     quiz_reply_keyboard,
 )
-from app.services import report_service
+from app.services import referral_service, report_service
 from app.states.quiz import GoalStates, ReportStates, TaskStates
 
 logger = logging.getLogger(__name__)
@@ -123,6 +124,23 @@ async def _show_day_review(target: types.Message | types.CallbackQuery, tasks: l
         "Если все ок — подтверждай.\nЕсли хочешь собрать день заново — жми изменить.",
         inline_markup=day_task_review_keyboard(),
         inline_text="Выбери, что делать дальше 👇",
+    )
+
+
+async def _show_referral_invite(message: types.Message) -> None:
+    if not await database.has_completed_quiz(message.from_user.id):
+        await message.answer(
+            "🧭 Сначала пройди квиз. После него открою тебе клуб, день и рефералку 👇",
+            reply_markup=quiz_reply_keyboard(WEB_APP_URL),
+        )
+        return
+
+    text, share_url = await referral_service.build_referral_invite(message.bot, message.from_user)
+    await _answer_private_with_actions(
+        message,
+        text,
+        inline_markup=referral_actions_keyboard(share_url, CLUB_GROUP_URL),
+        inline_text="Нажми кнопку ниже и отправь приглашение 👇",
     )
 
 
@@ -489,6 +507,18 @@ async def show_or_start_day(message: types.Message, state: FSMContext) -> None:
     await _start_day_flow(message, state)
 
 
+@router.message(Command("ref"))
+async def show_referral_from_command(message: types.Message) -> None:
+    await _delete_private_message_safely(message)
+    await _show_referral_invite(message)
+
+
+@router.message(F.text == "🚀 Рефералка")
+async def show_referral_from_reply(message: types.Message) -> None:
+    await _delete_private_message_safely(message)
+    await _show_referral_invite(message)
+
+
 @router.message(F.video_note, ReportStates.waiting_proof)
 async def save_report_video_note(message: types.Message, state: FSMContext) -> None:
     await state.update_data(report_file_id=message.video_note.file_id)
@@ -576,6 +606,12 @@ async def send_daily_report(query: types.CallbackQuery, state: FSMContext) -> No
             )
         except Exception as exc:
             logger.warning("Failed to send report video note to group | user=%s error=%s", query.from_user.id, exc)
+
+    await referral_service.process_referral_after_report(
+        bot=query.bot,
+        newbie_user_id=report_user_id,
+        newbie_telegram_id=query.from_user.id,
+    )
 
     await state.clear()
     await _answer_private_with_actions(
