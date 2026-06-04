@@ -282,8 +282,9 @@ async def start_report_flow(query: types.CallbackQuery, state: FSMContext) -> No
     me = await query.bot.get_me()
     await state.clear()
     sent = await query.message.answer(
-        "📤 Отчет сдаем в личке с ботом.\n\n"
-        "Там я спокойно проведу тебя по задачам по одной и соберу все доказательства без каши.",
+        "📤 Сдаем отчет за этот день.\n\n"
+        "Я покажу твои задачи,\n"
+        "а ты отправишь один кружочек до 1 минуты с коротким отчетом по ним 👇",
         reply_markup=open_private_flow_keyboard(
             me.username,
             "report_setup",

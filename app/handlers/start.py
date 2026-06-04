@@ -796,7 +796,7 @@ async def confirm_day_tasks(query: types.CallbackQuery, state: FSMContext) -> No
         day_summary.extend(
             [
                 "",
-                "Вечером до 22:00 он сдаст отчет и зафиксирует свой LedoScore 🔥",
+                "Вечером до 22:00 нужно сдать отчет и зафиксировать LedoScore 🔥",
             ]
         )
         try:
