@@ -36,6 +36,28 @@ def _last_group_chat_key(user_id: int) -> str:
     return f"last_group_chat:{user_id}"
 
 
+def _shorten_alert(text: str, limit: int = 110) -> str:
+    cleaned = " ".join((text or "").split())
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[: limit - 1].rstrip() + "…"
+
+
+def _goal_deadline_text(goal: dict) -> str:
+    created_raw = str(goal.get("created_at") or "")
+    if not created_raw:
+        return ""
+    try:
+        created_dt = datetime.fromisoformat(created_raw.replace("Z", "+00:00"))
+        finish_dt = created_dt + timedelta(days=30)
+        return (
+            f"Поставлена: {created_dt.strftime('%d.%m.%Y')}\n"
+            f"До: {finish_dt.strftime('%d.%m.%Y')}"
+        )
+    except Exception:
+        return ""
+
+
 async def _ensure_group_interaction(event_message: types.Message) -> bool:
     if event_message.chat.type == "private":
         sent = await event_message.answer(
@@ -117,6 +139,17 @@ async def start_goal_flow(query: types.CallbackQuery) -> None:
 
     await cache.set_data(_last_group_chat_key(query.from_user.id), str(query.message.chat.id), ex=7 * 24 * 60 * 60)
     logger.info("GROUP goal button | user=%s chat=%s", query.from_user.id, query.message.chat.id)
+    club_user = await database.get_club_user(query.from_user.id)
+    if club_user:
+        active_goal = await database.get_active_goal(club_user["id"])
+        if active_goal:
+            goal_text = _shorten_alert(str(active_goal.get("goal_text") or "Цель уже активна"))
+            deadline_text = _goal_deadline_text(active_goal)
+            alert_text = f"🎯 Цель уже активна:\n{goal_text}"
+            if deadline_text:
+                alert_text += f"\n\n{deadline_text}"
+            await query.answer(alert_text, show_alert=True)
+            return
     me = await query.bot.get_me()
     sent = await query.message.answer(
         "Цель на 30 дней задается в личке с ботом.",
@@ -139,6 +172,16 @@ async def open_day_view(query: types.CallbackQuery, state: FSMContext) -> None:
 
     await cache.set_data(_last_group_chat_key(query.from_user.id), str(query.message.chat.id), ex=7 * 24 * 60 * 60)
     logger.info("GROUP day button | user=%s chat=%s", query.from_user.id, query.message.chat.id)
+    club_user = await database.get_club_user(query.from_user.id)
+    if club_user:
+        today = _today()
+        today_tasks = await database.get_today_tasks(club_user["id"], today)
+        if today_tasks:
+            await query.answer(
+                "📌 День уже зафиксирован ✅\nПодробности смотри через кнопку «Детально».",
+                show_alert=True,
+            )
+            return
     me = await query.bot.get_me()
     sent = await query.message.answer(
         "Собрать день лучше в личке, чтобы ничего не терялось и весь рабочий путь был в одном месте 👇",
@@ -204,6 +247,12 @@ async def start_report_flow(query: types.CallbackQuery, state: FSMContext) -> No
 
     await cache.set_data(_last_group_chat_key(query.from_user.id), str(query.message.chat.id), ex=7 * 24 * 60 * 60)
     logger.info("GROUP report button | user=%s chat=%s", query.from_user.id, query.message.chat.id)
+    club_user = await database.get_club_user(query.from_user.id)
+    if club_user:
+        existing_report = await database.get_daily_report(club_user["id"], _today())
+        if existing_report and str(existing_report.get("status") or "").lower() not in {"redo_requested", "rejected"}:
+            await query.answer("📤 Бро, ты уже сдал отчет за этот день ✅", show_alert=True)
+            return
     me = await query.bot.get_me()
     await state.clear()
     sent = await query.message.answer(
@@ -213,6 +262,28 @@ async def start_report_flow(query: types.CallbackQuery, state: FSMContext) -> No
             me.username,
             "report_setup",
             "ОТКРЫТЬ ОТЧЕТ В ЛИЧКЕ",
+        ),
+    )
+    cleanup_service.schedule_delete_message(query.bot, sent.chat.id, sent.message_id, 120)
+    await query.answer()
+
+
+@router.callback_query(F.data == "detail_view")
+async def open_detail_view(query: types.CallbackQuery) -> None:
+    if not await _ensure_group_callback(query):
+        return
+    if not await _ensure_quiz_for_query(query):
+        return
+
+    await cache.set_data(_last_group_chat_key(query.from_user.id), str(query.message.chat.id), ex=7 * 24 * 60 * 60)
+    me = await query.bot.get_me()
+    sent = await query.message.answer(
+        "📋 Все детали уже в личке.\n\n"
+        "Открой бота и через меню посмотри цель, план и день 👇",
+        reply_markup=open_private_flow_keyboard(
+            me.username,
+            "details_setup",
+            "ОТКРЫТЬ ДЕТАЛИ В ЛИЧКЕ",
         ),
     )
     cleanup_service.schedule_delete_message(query.bot, sent.chat.id, sent.message_id, 120)

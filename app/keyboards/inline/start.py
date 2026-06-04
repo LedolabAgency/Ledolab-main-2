@@ -252,6 +252,7 @@ def club_main_menu(bot_username: str | None = None) -> types.InlineKeyboardMarku
     goal_button: types.InlineKeyboardButton
     day_button: types.InlineKeyboardButton
     report_button: types.InlineKeyboardButton
+    details_button: types.InlineKeyboardButton
     rating_button: types.InlineKeyboardButton
     rules_button: types.InlineKeyboardButton
     if bot_username:
@@ -267,12 +268,17 @@ def club_main_menu(bot_username: str | None = None) -> types.InlineKeyboardMarku
             text="📤 Сдать отчет",
             url=f"https://t.me/{bot_username}?start=report_setup",
         )
+        details_button = types.InlineKeyboardButton(
+            text="📋 Детально",
+            url=f"https://t.me/{bot_username}?start=details_setup",
+        )
         rating_button = types.InlineKeyboardButton(text="🏆 Рейтинг", callback_data="rating_view")
         rules_button = types.InlineKeyboardButton(text="📘 Как работает клуб", callback_data="rules_view")
     else:
         goal_button = types.InlineKeyboardButton(text="🎯 Моя цель (30 дней)", callback_data="goal_view")
         day_button = types.InlineKeyboardButton(text="📅 Мой день (до 3х задач)", callback_data="day_view")
         report_button = types.InlineKeyboardButton(text="📤 Сдать отчет", callback_data="report_submit")
+        details_button = types.InlineKeyboardButton(text="📋 Детально", callback_data="detail_view")
         rating_button = types.InlineKeyboardButton(text="🏆 Рейтинг", callback_data="rating_view")
         rules_button = types.InlineKeyboardButton(text="📘 Как работает клуб", callback_data="rules_view")
 
@@ -281,6 +287,7 @@ def club_main_menu(bot_username: str | None = None) -> types.InlineKeyboardMarku
             [goal_button],
             [day_button],
             [report_button],
+            [details_button],
             [rating_button],
             [rules_button],
         ]

@@ -397,6 +397,15 @@ async def cmd_start(
             await _start_report_flow(message, state)
             return
 
+        if args == "details_setup":
+            await _answer_private_with_actions(
+                message,
+                "📋 Все твои рабочие детали уже здесь.\n\n"
+                "Используй кнопки ниже, чтобы открыть цель, план или день 👇",
+                inline_markup=None,
+            )
+            return
+
         has_quiz = await database.has_completed_quiz(user_id)
         if has_quiz:
             me = await message.bot.get_me()
