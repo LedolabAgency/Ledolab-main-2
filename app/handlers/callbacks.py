@@ -25,9 +25,10 @@ async def enter_club(query: types.CallbackQuery) -> None:
             await query.message.answer(reply_markup=quiz_reply_keyboard(WEB_APP_URL), text="ПРОЙДИ КВИЗ")
             await query.answer()
             return
+        me = await query.bot.get_me()
         await query.message.edit_text(
             "LedoLab Business Club\n\nРабочее меню:",
-            reply_markup=club_main_menu(),
+            reply_markup=club_main_menu(details_bot_username=me.username),
         )
         await query.answer()
     except Exception as e:
@@ -48,9 +49,10 @@ async def back_to_menu(query: types.CallbackQuery) -> None:
             await query.message.answer(reply_markup=quiz_reply_keyboard(WEB_APP_URL), text="ПРОЙДИ КВИЗ")
             await query.answer()
             return
+        me = await query.bot.get_me()
         await query.message.edit_text(
             "LedoLab Business Club\n\nРабочее меню:",
-            reply_markup=club_main_menu(),
+            reply_markup=club_main_menu(details_bot_username=me.username),
         )
         await query.answer()
     except Exception as e:

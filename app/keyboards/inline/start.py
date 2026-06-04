@@ -247,8 +247,11 @@ def day_task_review_keyboard() -> types.InlineKeyboardMarkup:
     )
 
 
-def club_main_menu(bot_username: str | None = None) -> types.InlineKeyboardMarkup:
-    """Main working menu. In groups all buttons open the private bot."""
+def club_main_menu(
+    bot_username: str | None = None,
+    details_bot_username: str | None = None,
+) -> types.InlineKeyboardMarkup:
+    """Main working menu. In groups primary actions use callbacks, details can open the bot directly."""
     goal_button: types.InlineKeyboardButton
     day_button: types.InlineKeyboardButton
     report_button: types.InlineKeyboardButton
@@ -278,7 +281,13 @@ def club_main_menu(bot_username: str | None = None) -> types.InlineKeyboardMarku
         goal_button = types.InlineKeyboardButton(text="🎯 Моя цель (30 дней)", callback_data="goal_view")
         day_button = types.InlineKeyboardButton(text="📅 Мой день (до 3х задач)", callback_data="day_view")
         report_button = types.InlineKeyboardButton(text="📤 Сдать отчет", callback_data="report_submit")
-        details_button = types.InlineKeyboardButton(text="📋 Детально", callback_data="detail_view")
+        if details_bot_username:
+            details_button = types.InlineKeyboardButton(
+                text="📋 Детально",
+                url=f"https://t.me/{details_bot_username}?start=details_setup",
+            )
+        else:
+            details_button = types.InlineKeyboardButton(text="📋 Детально", callback_data="detail_view")
         rating_button = types.InlineKeyboardButton(text="🏆 Рейтинг", callback_data="rating_view")
         rules_button = types.InlineKeyboardButton(text="📘 Как работает клуб", callback_data="rules_view")
 

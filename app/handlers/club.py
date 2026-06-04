@@ -120,9 +120,10 @@ async def _show_group_menu(message: types.Message) -> None:
 
     await cache.set_data(_last_group_chat_key(message.from_user.id), str(message.chat.id), ex=7 * 24 * 60 * 60)
     logger.info("MENU command | user=%s chat=%s type=%s text=%s", message.from_user.id, message.chat.id, message.chat.type, message.text)
+    me = await message.bot.get_me()
     await message.answer(
         "LedoLab Business Club — клуб сильнейших\n\nРабочее меню:",
-        reply_markup=club_main_menu(),
+        reply_markup=club_main_menu(details_bot_username=me.username),
     )
 
 
@@ -141,7 +142,8 @@ async def view_rules(query: types.CallbackQuery) -> None:
         "4. Вечером сдаешь отчет и получаешь баллы.\n"
         "5. Лучшие участники поднимаются в рейтинге и получают доступ к призам."
     )
-    await query.message.edit_text(text, reply_markup=club_main_menu())
+    me = await query.bot.get_me()
+    await query.message.edit_text(text, reply_markup=club_main_menu(details_bot_username=me.username))
     await query.answer()
 
 
@@ -257,7 +259,7 @@ async def save_day_tasks(message: types.Message, state: FSMContext) -> None:
 
     await message.answer(
         "📅 День зафиксирован.\n\nТвои 3 задачи сохранены. Вечером возвращайся и сдавай отчет.",
-        reply_markup=club_main_menu(),
+        reply_markup=club_main_menu(details_bot_username=me.username),
     )
     await state.clear()
 
