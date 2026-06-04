@@ -8,6 +8,7 @@ import logging
 from datetime import datetime, timedelta
 
 from aiogram import F, Router, types
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 
 from app import cache, database
@@ -110,6 +111,22 @@ async def _ensure_quiz_for_message(message: types.Message) -> bool:
     return False
 
 
+async def _show_group_menu(message: types.Message) -> None:
+    if message.chat.type == "private":
+        await message.answer("Рабочее меню живет в группе LedoLab Business Club.")
+        return
+    if not await _ensure_quiz_for_message(message):
+        return
+
+    await cache.set_data(_last_group_chat_key(message.from_user.id), str(message.chat.id), ex=7 * 24 * 60 * 60)
+    logger.info("MENU command | user=%s chat=%s type=%s text=%s", message.from_user.id, message.chat.id, message.chat.type, message.text)
+    me = await message.bot.get_me()
+    await message.answer(
+        "LedoLab Business Club — клуб сильнейших\n\nРабочее меню:",
+        reply_markup=club_main_menu(me.username),
+    )
+
+
 @router.callback_query(F.data == "rules_view")
 async def view_rules(query: types.CallbackQuery) -> None:
     if not await _ensure_group_callback(query):
@@ -128,6 +145,16 @@ async def view_rules(query: types.CallbackQuery) -> None:
     )
     await query.message.edit_text(text, reply_markup=club_main_menu(me.username))
     await query.answer()
+
+
+@router.message(Command("menu"))
+async def show_menu_command(message: types.Message) -> None:
+    await _show_group_menu(message)
+
+
+@router.message(F.text.regexp(r"^/menu(?:@[\w_]+)?$"))
+async def show_menu_fallback(message: types.Message) -> None:
+    await _show_group_menu(message)
 
 
 @router.callback_query(F.data == "goal_view")
