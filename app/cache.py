@@ -171,6 +171,16 @@ class KeyManager:
         return f"day_plan_lock:{user_id}:{date}"
 
     @staticmethod
+    def get_goal_lock_key(user_id: int) -> str:
+        """Main 30-day goal lock key."""
+        return f"goal_lock:{user_id}"
+
+    @staticmethod
+    def get_goal_day_lock_key(user_id: int, day_number: int) -> str:
+        """Per-day goal milestone lock key."""
+        return f"goal_day_lock:{user_id}:{day_number}"
+
+    @staticmethod
     def get_pending_referrer_key(user_id: int) -> str:
         """Referrer telegram id captured from start deep link."""
         return f"pending_referrer:{user_id}"
