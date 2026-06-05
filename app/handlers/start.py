@@ -419,15 +419,12 @@ async def cmd_start(
 
         has_quiz = await database.has_completed_quiz(user_id)
         if has_quiz:
-            me = await message.bot.get_me()
-            await _answer_private_with_actions(
-                message,
+            await message.answer(
                 "🔥 <b>Ты уже внутри LedoLab Business Club.</b>\n\n"
                 "Если готов продолжать движение — открывай меню и работай по шагам.\n"
                 "Если нужен большой маршрут — начни с цели на 30 дней.\n"
                 "Если нужен конкретный фокус на сегодня — переходи в день.",
-                inline_markup=club_main_menu(me.username),
-                inline_text="Ниже у тебя теперь есть быстрые кнопки-напоминания.\nА если нужен старый inline-вариант меню — он тоже под рукой 👇",
+                reply_markup=back_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
             )
             return
 
