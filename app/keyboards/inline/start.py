@@ -46,7 +46,6 @@ def private_hub_reply_keyboard() -> types.ReplyKeyboardMarkup:
             [types.KeyboardButton(text="🎯 Моя цель 30 дней")],
             [types.KeyboardButton(text="📅 Мой план на 5 дней")],
             [types.KeyboardButton(text="📌 Мой день (до 3х задач)")],
-            [types.KeyboardButton(text="🚀 Рефералка")],
         ],
         resize_keyboard=True,
         is_persistent=True,
@@ -256,6 +255,7 @@ def club_main_menu(
     day_button: types.InlineKeyboardButton
     report_button: types.InlineKeyboardButton
     details_button: types.InlineKeyboardButton
+    referral_button: types.InlineKeyboardButton | None = None
     rating_button: types.InlineKeyboardButton
     rules_button: types.InlineKeyboardButton
     if bot_username:
@@ -286,21 +286,29 @@ def club_main_menu(
                 text="📋 Детально",
                 url=f"https://t.me/{details_bot_username}?start=details_setup",
             )
+            referral_button = types.InlineKeyboardButton(
+                text="🚀 Рефералка",
+                url=f"https://t.me/{details_bot_username}?start=ref_setup",
+            )
         else:
             details_button = types.InlineKeyboardButton(text="📋 Детально", callback_data="detail_view")
         rating_button = types.InlineKeyboardButton(text="🏆 Рейтинг", callback_data="rating_view")
         rules_button = types.InlineKeyboardButton(text="📘 Как работает клуб", callback_data="rules_view")
 
-    return types.InlineKeyboardMarkup(
-        inline_keyboard=[
-            [goal_button],
-            [day_button],
-            [report_button],
-            [details_button],
-            [rating_button],
-            [rules_button],
-        ]
-    )
+    rows = [
+        [goal_button],
+        [day_button],
+        [report_button],
+        [details_button],
+    ]
+    if referral_button:
+        rows.append([referral_button])
+    rows.extend([
+        [rating_button],
+        [rules_button],
+    ])
+
+    return types.InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def report_count_keyboard() -> types.InlineKeyboardMarkup:

@@ -406,6 +406,10 @@ async def cmd_start(
             )
             return
 
+        if args == "ref_setup":
+            await _show_referral_invite(message)
+            return
+
         has_quiz = await database.has_completed_quiz(user_id)
         if has_quiz:
             me = await message.bot.get_me()

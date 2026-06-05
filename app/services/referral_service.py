@@ -1,18 +1,25 @@
 from __future__ import annotations
 
 import logging
+from html import escape
 from urllib.parse import quote
 
 from aiogram import Bot
+from aiogram import types
 from aiogram.types import User
 
 from app import cache, database
+from app.config import REPORTS_GROUP_ID
 
 logger = logging.getLogger(__name__)
 
 REFERRER_BONUS = 50
 NEWBIE_BONUS = 20
 REFERRAL_REPORT_THRESHOLD = 3
+
+
+def _last_group_chat_key(user_id: int) -> str:
+    return f"last_group_chat:{user_id}"
 
 
 async def capture_referral_start(new_user_id: int, start_arg: str) -> int | None:
@@ -61,6 +68,95 @@ async def build_referral_invite(bot: Bot, actor: User) -> tuple[str, str]:
     return text, share_url
 
 
+async def _resolve_target_group_ids(
+    *,
+    newbie_telegram_id: int,
+    referral: dict,
+) -> list[int]:
+    candidate_ids: list[int] = []
+
+    newbie_chat = await cache.get_data(_last_group_chat_key(newbie_telegram_id))
+    if newbie_chat:
+        try:
+            candidate_ids.append(int(newbie_chat))
+        except ValueError:
+            pass
+
+    referrer_telegram_id = referral.get("referrer_telegram_id")
+    if referrer_telegram_id:
+        referrer_chat = await cache.get_data(_last_group_chat_key(int(referrer_telegram_id)))
+        if referrer_chat:
+            try:
+                chat_id = int(referrer_chat)
+                if chat_id not in candidate_ids:
+                    candidate_ids.append(chat_id)
+            except ValueError:
+                pass
+
+    if REPORTS_GROUP_ID and REPORTS_GROUP_ID not in candidate_ids:
+        candidate_ids.append(REPORTS_GROUP_ID)
+
+    return candidate_ids
+
+
+async def _announce_referral_bonus_to_group(
+    *,
+    bot: Bot,
+    newbie_telegram_id: int,
+    referral: dict,
+) -> None:
+    target_group_ids = await _resolve_target_group_ids(
+        newbie_telegram_id=newbie_telegram_id,
+        referral=referral,
+    )
+    if not target_group_ids:
+        logger.warning("Referral group bonus skipped | newbie=%s reason=no_target_group", newbie_telegram_id)
+        return
+
+    me = await bot.get_me()
+    referrer_telegram_id = int(referral.get("referrer_telegram_id") or 0)
+    referrer = await database.get_club_user(referrer_telegram_id) if referrer_telegram_id else None
+    referrer_label = (
+        f"@{escape(str(referrer.get('username')))}"
+        if referrer and referrer.get("username")
+        else escape(str((referrer or {}).get("first_name") or "участнику клуба"))
+    )
+    referrer_mention = (
+        f'<a href="tg://user?id={referrer_telegram_id}">{referrer_label}</a>'
+        if referrer_telegram_id
+        else referrer_label
+    )
+    text = (
+        f"🎉 +100 грн начислено {referrer_mention}!\n\n"
+        "За участника, зарегистрированного по реферальной ссылке 💰\n\n"
+        "Получайте вознаграждение за каждую успешную рекомендацию.\n\n"
+        "Нажмите кнопку ниже, чтобы получить свою реферальную ссылку."
+    )
+    markup = types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                types.InlineKeyboardButton(
+                    text="🚀 Рефералка",
+                    url=f"https://t.me/{me.username}?start=ref_setup",
+                )
+            ]
+        ]
+    )
+
+    for target_group_id in target_group_ids:
+        try:
+            await bot.send_message(target_group_id, text, reply_markup=markup, parse_mode="HTML")
+            logger.info("Referral group bonus sent | newbie=%s chat=%s", newbie_telegram_id, target_group_id)
+            return
+        except Exception as e:
+            logger.warning(
+                "Referral group bonus failed | newbie=%s chat=%s error=%s",
+                newbie_telegram_id,
+                target_group_id,
+                e,
+            )
+
+
 async def process_referral_after_report(
     *,
     bot: Bot,
@@ -107,6 +203,12 @@ async def process_referral_after_report(
         )
     except Exception as e:
         logger.warning("Failed to notify newbie %s: %s", newbie_telegram_id, e)
+
+    await _announce_referral_bonus_to_group(
+        bot=bot,
+        newbie_telegram_id=newbie_telegram_id,
+        referral=hydrated,
+    )
 
     return {
         "referrer_bonus": REFERRER_BONUS,
