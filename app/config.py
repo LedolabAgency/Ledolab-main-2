@@ -27,7 +27,7 @@ SUPABASE_URL: str = _require("SUPABASE_URL")
 SUPABASE_KEY: str = _require("SUPABASE_KEY")
 WEB_APP_URL: str = _getenv("WEB_APP_URL", "https://example.com")
 CLUB_GROUP_URL: Optional[str] = _getenv("CLUB_GROUP_URL")
-GROUP_ENTRY_URL: Optional[str] = _getenv("GROUP_ENTRY_URL", "https://t.me/ledolab/270")
+GROUP_ENTRY_URL: Optional[str] = _getenv("GROUP_ENTRY_URL", "https://t.me/ledolab/846")
 
 # Опціональні
 SENTRY_DSN: Optional[str] = _getenv("SENTRY_DSN")
