@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 from aiogram import types
 
 from app import cache, database
+from app.services import mention_service
 
 logger = logging.getLogger(__name__)
 KYIV_TZ = ZoneInfo("Europe/Kiev")
@@ -127,6 +128,7 @@ def render_report_preview(entries: List[Dict[str, Any]]) -> str:
 
 
 def build_group_summary(
+    telegram_id: Optional[int],
     username: Optional[str],
     entries: List[Dict[str, Any]],
     *,
@@ -135,9 +137,12 @@ def build_group_summary(
     current_streak: Optional[int] = None,
     weekly_ledoscore: Optional[int] = None,
 ) -> str:
-    author = f"@{username}" if username else "Участник клуба"
-    safe_author = escape(str(author))
-    lines = [f"{safe_author}\n", "📤 Отчет за день:\n"]
+    author = mention_service.build_user_mention(
+        telegram_id=telegram_id,
+        username=username,
+        fallback="Участник клуба",
+    )
+    lines = [f"{author}\n", "📤 Отчет за день:\n"]
     if entries:
         entry = entries[0]
         task_lines = entry.get("task_lines") or []
@@ -262,7 +267,7 @@ async def save_daily_report(
             entries_to_store[0]["bonus_awarded"] = bonus_awarded
             entries_to_store[0]["streak_day"] = new_streak
         tasks_snapshot = [entry["task_text"] for entry in entries]
-        summary_text = build_group_summary(username, entries)
+        summary_text = build_group_summary(telegram_id, username, entries)
         report = await database.create_or_update_daily_report(
             user_id=user_id,
             report_date=report_date,
@@ -288,6 +293,7 @@ async def save_daily_report(
         await cache.set_data(streak_key, str(new_streak))
         await cache.set_data(last_report_key, report_date)
         summary_text = build_group_summary(
+            telegram_id,
             username,
             entries,
             score_awarded=score_awarded,

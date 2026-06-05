@@ -28,6 +28,7 @@ from app.keyboards.inline.start import (
     quiz_reply_keyboard,
 )
 from app.services import referral_service, report_service
+from app.services import mention_service
 from app.states.quiz import GoalStates, ReportStates, TaskStates
 
 logger = logging.getLogger(__name__)
@@ -785,10 +786,11 @@ async def confirm_day_tasks(query: types.CallbackQuery, state: FSMContext) -> No
         target_group_id = int(last_group_chat) if last_group_chat else None
 
     if target_group_id:
-        user_label = (
-            f"@{club_user['username']}"
-            if club_user.get("username")
-            else escape(str(club_user.get("first_name") or query.from_user.first_name or "Участник"))
+        user_label = mention_service.build_user_mention(
+            telegram_id=query.from_user.id,
+            username=club_user.get("username"),
+            first_name=club_user.get("first_name") or query.from_user.first_name,
+            fallback="Участник",
         )
         day_summary = [
             f"📌 {user_label} зафиксировал свой день",

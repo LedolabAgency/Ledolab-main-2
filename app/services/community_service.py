@@ -9,19 +9,11 @@ from aiogram import Bot
 
 from app import cache, database
 from app.config import REPORTS_GROUP_ID
-from app.services import rating_service
+from app.services import mention_service, rating_service
 
 logger = logging.getLogger(__name__)
 
 KYIV_TZ = ZoneInfo("Europe/Kiev")
-
-
-def _display_name(first_name: str | None, username: str | None, fallback_id: int) -> str:
-    if username:
-        return f"@{username}"
-    if first_name:
-        return first_name
-    return f"ID:{fallback_id}"
 
 
 def _week_window(now: datetime) -> tuple[datetime, datetime]:
@@ -34,21 +26,18 @@ def _week_window(now: datetime) -> tuple[datetime, datetime]:
 
 
 def _build_regular_welcome(display_name: str) -> str:
-    safe_name = escape(display_name)
     return (
         "🔥 Новое пополнение в LedoLab Business Club\n\n"
-        f"{safe_name} прошел квиз и зашел в клуб.\n\n"
+        f"{display_name} прошел квиз и зашел в клуб.\n\n"
         "Здесь побеждают не самые громкие, а самые системные.\n"
         "Поддержите новичка огнем и включите его в ритм 🔥"
     )
 
 
 def _build_referral_welcome(display_name: str, referrer_name: str) -> str:
-    safe_name = escape(display_name)
-    safe_referrer = escape(referrer_name)
     return (
         "🚀 Реферальное пополнение в LedoLab Business Club\n\n"
-        f"Новый участник {safe_name} зашел по приглашению {safe_referrer}.\n\n"
+        f"Новый участник {display_name} зашел по приглашению {referrer_name}.\n\n"
         "Если новичок дойдет до 3-го отчета, оба получат бонусы по рефералке 🔥"
     )
 
@@ -91,7 +80,12 @@ async def announce_member_joined(
     first_name: str | None,
 ) -> None:
     referral = await database.get_referral_by_referred_telegram(telegram_id)
-    display_name = _display_name(first_name, username, telegram_id)
+    display_name = mention_service.build_user_mention(
+        telegram_id=telegram_id,
+        username=username,
+        first_name=first_name,
+        fallback=f"ID:{telegram_id}",
+    )
     key_prefix = "group_referral_welcome" if referral else "group_welcome"
     dedupe_key = f"{key_prefix}:{telegram_id}"
     if await cache.get_data(dedupe_key):
@@ -101,10 +95,11 @@ async def announce_member_joined(
     text = _build_regular_welcome(display_name)
     if referral and referral.get("referrer_telegram_id"):
         referrer = await database.get_club_user(int(referral["referrer_telegram_id"]))
-        referrer_name = _display_name(
-            (referrer or {}).get("first_name"),
-            (referrer or {}).get("username"),
-            int(referral["referrer_telegram_id"]),
+        referrer_name = mention_service.build_user_mention(
+            telegram_id=int(referral["referrer_telegram_id"]),
+            username=(referrer or {}).get("username"),
+            first_name=(referrer or {}).get("first_name"),
+            fallback="Участник",
         )
         text = _build_referral_welcome(display_name, referrer_name)
     target_group_ids = await _resolve_target_group_ids(telegram_id=telegram_id, referral=referral)

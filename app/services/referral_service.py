@@ -10,6 +10,7 @@ from aiogram.types import User
 
 from app import cache, database
 from app.config import REPORTS_GROUP_ID
+from app.services import mention_service
 
 logger = logging.getLogger(__name__)
 
@@ -116,15 +117,11 @@ async def _announce_referral_bonus_to_group(
     me = await bot.get_me()
     referrer_telegram_id = int(referral.get("referrer_telegram_id") or 0)
     referrer = await database.get_club_user(referrer_telegram_id) if referrer_telegram_id else None
-    referrer_label = (
-        f"@{escape(str(referrer.get('username')))}"
-        if referrer and referrer.get("username")
-        else escape(str((referrer or {}).get("first_name") or "участнику клуба"))
-    )
-    referrer_mention = (
-        f'<a href="tg://user?id={referrer_telegram_id}">{referrer_label}</a>'
-        if referrer_telegram_id
-        else referrer_label
+    referrer_mention = mention_service.build_user_mention(
+        telegram_id=referrer_telegram_id,
+        username=(referrer or {}).get("username"),
+        first_name=(referrer or {}).get("first_name"),
+        fallback="участнику клуба",
     )
     text = (
         f"🎉 +100 грн начислено {referrer_mention}!\n\n"
