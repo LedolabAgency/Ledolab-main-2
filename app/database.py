@@ -1253,6 +1253,31 @@ async def get_user_total_bonus(user_id: int) -> int:
         return 0
 
 
+async def get_user_score_for_period(user_id: str, start_iso: str, end_iso: str) -> int:
+    """Get user's LedoScore for a specific period, excluding LedoBonus."""
+    try:
+        sb = get_supabase()
+        result = (
+            sb.table("scores")
+            .select("points,reason,created_at")
+            .eq("user_id", user_id)
+            .gte("created_at", start_iso)
+            .lt("created_at", end_iso)
+            .execute()
+        )
+
+        if result.data:
+            return sum(
+                int(record.get("points") or 0)
+                for record in result.data
+                if not str(record.get("reason") or "").startswith("LedoBonus ")
+            )
+        return 0
+    except Exception as e:
+        logger.error(f"Error getting score for period {user_id} {start_iso}..{end_iso}: {e}", exc_info=True)
+        return 0
+
+
 async def get_top_users(limit: int = 10) -> List[Dict[str, Any]]:
     """
     Get top users by Leda Score for rating.

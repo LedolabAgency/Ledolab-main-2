@@ -5,15 +5,17 @@ Service layer for daily report submission, public moderation, and admin review.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, time, timedelta
 from html import escape
 from typing import Any, Dict, List, Optional
+from zoneinfo import ZoneInfo
 
 from aiogram import types
 
 from app import cache, database
 
 logger = logging.getLogger(__name__)
+KYIV_TZ = ZoneInfo("Europe/Kiev")
 
 DAILY_REPORT_SCORE = 30
 SUSPICIOUS_FLAGS_THRESHOLD = 3
@@ -131,8 +133,7 @@ def build_group_summary(
     score_awarded: Optional[int] = None,
     bonus_awarded: Optional[int] = None,
     current_streak: Optional[int] = None,
-    total_ledoscore: Optional[int] = None,
-    total_ledobonus: Optional[int] = None,
+    weekly_ledoscore: Optional[int] = None,
 ) -> str:
     author = f"@{username}" if username else "Участник клуба"
     safe_author = escape(str(author))
@@ -153,8 +154,7 @@ def build_group_summary(
         score_awarded is not None
         or bonus_awarded is not None
         or current_streak is not None
-        or total_ledoscore is not None
-        or total_ledobonus is not None
+        or weekly_ledoscore is not None
     ):
         lines.append("")
         lines.append("📊 Результат дня:")
@@ -163,14 +163,33 @@ def build_group_summary(
         if bonus_awarded is not None:
             lines.append(f"LedoBonus: +{int(bonus_awarded)}")
         if current_streak is not None:
-            lines.append(f"День пути: {int(current_streak)}/5")
-        if total_ledoscore is not None:
-            lines.append(f"Общий LedoScore: {int(total_ledoscore)}")
-        if total_ledobonus is not None:
-            lines.append(f"Общий LedoBonus: {int(total_ledobonus)}")
+            lines.append("")
+            lines.append("📈 До закрытия пути")
+            lines.append(_render_path_progress(int(current_streak), 5))
+            remaining = max(5 - int(current_streak), 0)
+            lines.append("Путь закрыт 🔥" if remaining == 0 else f"Еще {remaining} отчетов 🔥")
+        if weekly_ledoscore is not None:
+            lines.append("")
+            lines.append(f"LedoScore за неделю: {int(weekly_ledoscore)}")
     lines.append("")
     lines.append("Отчет отправлен в клуб.")
     return "\n".join(lines)
+
+
+def _render_path_progress(current: int, total: int, blocks: int = 10) -> str:
+    current = max(0, min(current, total))
+    filled = int(round((current / total) * blocks)) if total else 0
+    filled = max(0, min(filled, blocks))
+    return f"{'█' * filled}{'░' * (blocks - filled)} {current}/{total}"
+
+
+def _week_window(now: datetime) -> tuple[datetime, datetime]:
+    days_since_sunday = (now.weekday() + 1) % 7
+    last_sunday = now.date() - timedelta(days=days_since_sunday)
+    week_start = datetime.combine(last_sunday, time(22, 0), tzinfo=KYIV_TZ)
+    if now < week_start:
+        week_start -= timedelta(days=7)
+    return week_start, week_start + timedelta(days=7)
 
 
 def build_admin_summary(user_label: str, goal_text: str, entries: List[Dict[str, Any]], flags: int) -> str:
@@ -260,6 +279,12 @@ async def save_daily_report(
             await database.award_score(user_id, bonus_awarded, f"LedoBonus day {new_streak}")
         total_ledoscore = await database.get_user_total_score(user_id)
         total_ledobonus = await database.get_user_total_bonus(user_id)
+        week_start, week_end = _week_window(datetime.now(KYIV_TZ))
+        weekly_ledoscore = await database.get_user_score_for_period(
+            user_id,
+            week_start.isoformat(),
+            week_end.isoformat(),
+        )
         await cache.set_data(streak_key, str(new_streak))
         await cache.set_data(last_report_key, report_date)
         summary_text = build_group_summary(
@@ -268,8 +293,7 @@ async def save_daily_report(
             score_awarded=score_awarded,
             bonus_awarded=bonus_awarded,
             current_streak=new_streak,
-            total_ledoscore=total_ledoscore,
-            total_ledobonus=total_ledobonus,
+            weekly_ledoscore=weekly_ledoscore,
         )
         await database.update_daily_report_summary_text(report["id"], summary_text)
         report["summary_text"] = summary_text
