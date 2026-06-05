@@ -141,7 +141,7 @@ async def _show_referral_invite(message: types.Message) -> None:
         message,
         text,
         inline_markup=referral_actions_keyboard(share_url, CLUB_GROUP_URL),
-        inline_text="Нажми кнопку ниже и отправь приглашение 👇",
+        inline_text="",
     )
 
 
@@ -224,7 +224,7 @@ async def _answer_private_with_actions(
         text,
         reply_markup=private_hub_reply_keyboard() if chat.type == "private" else None,
     )
-    if inline_markup:
+    if inline_markup and inline_text.strip():
         await sent.answer(inline_text, reply_markup=inline_markup)
 
 
