@@ -135,16 +135,11 @@ async def view_rules(query: types.CallbackQuery) -> None:
         return
 
     text = (
-        "📘 Как работает LedoLab Business To-Do Club\n\n"
-        "1. Ставишь 1 цель на 30 дней.\n"
-        "2. Разбиваешь ее на 5 рабочих дней недели.\n"
-        "3. Каждый день фиксируешь 3 задачи.\n"
-        "4. Вечером сдаешь отчет и получаешь баллы.\n"
-        "5. Лучшие участники поднимаются в рейтинге и получают доступ к призам."
+        "🎯 Поставь цель на 30 дней, разбей её на 5 дней и сдавай ежедневные отчёты.\n\n"
+        "🔥 Чем длиннее твой стрик, тем больше бонусных баллов ты получаешь.\n\n"
+        "📈 Каждый отчёт приближает тебя к цели. 🚀"
     )
-    me = await query.bot.get_me()
-    await query.message.edit_text(text, reply_markup=club_main_menu(details_bot_username=me.username))
-    await query.answer()
+    await query.answer(text, show_alert=True)
 
 
 @router.message(Command("menu"))
