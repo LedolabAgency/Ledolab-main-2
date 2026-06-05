@@ -60,7 +60,7 @@ async def _show_day_closed_message(target: types.Message | types.CallbackQuery) 
         "Отчет за этот день уже сдан, LedoScore зафиксирован.\n"
         "На сегодня все — выдохни, сохрани темп и возвращайся завтра за новым сильным днем 🚀",
         inline_markup=back_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
-        inline_text="Вернуться в группу можно здесь 👇",
+        single_message=True,
     )
 
 
@@ -76,7 +76,7 @@ async def _show_saved_day_message(
         f"До {deadline_text.replace('до ', '')} сдай отчет за этот день.\n"
         "За отчет ты получишь LedoScore и поднимешься в рейтинге 👇",
         inline_markup=back_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
-        inline_text="Вернуться в группу можно здесь 👇",
+        single_message=True,
     )
 
 
@@ -112,7 +112,7 @@ async def _show_task_prompt(
         target,
         prompts.get(task_number, "Напиши следующую задачу 👇"),
         inline_markup=back_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
-        inline_text="Если передумал — вернуться в группу можно здесь 👇",
+        single_message=True,
     )
 
 
@@ -142,6 +142,7 @@ async def _show_referral_invite(message: types.Message) -> None:
         text,
         inline_markup=referral_actions_keyboard(share_url, CLUB_GROUP_URL),
         inline_text="",
+        single_message=True,
     )
 
 
@@ -171,7 +172,7 @@ async def _start_report_flow(message: types.Message, state: FSMContext) -> None:
             "📭 На этот день у тебя пока нет зафиксированных задач.\n\n"
             "Сначала собери `📌 Мой день (до 3х задач)`, а потом возвращайся к отчету.",
             inline_markup=back_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
-            inline_text="Вернуться в группу можно здесь 👇",
+            single_message=True,
         )
         return
 
@@ -193,7 +194,7 @@ async def _start_report_flow(message: types.Message, state: FSMContext) -> None:
         message,
         report_service.report_intro_text(task_texts),
         inline_markup=back_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
-        inline_text="Если передумал — вернуться в группу можно здесь 👇",
+        single_message=True,
     )
 
 
@@ -212,6 +213,7 @@ async def _answer_private_with_actions(
     *,
     inline_markup: types.InlineKeyboardMarkup | None = None,
     inline_text: str = "Выбери действие ниже 👇",
+    single_message: bool = False,
 ) -> None:
     if isinstance(target, types.CallbackQuery):
         chat = target.message.chat
@@ -219,6 +221,10 @@ async def _answer_private_with_actions(
     else:
         chat = target.chat
         sender = target
+
+    if inline_markup and single_message:
+        await sender.answer(text, reply_markup=inline_markup)
+        return
 
     sent = await sender.answer(
         text,
@@ -281,7 +287,7 @@ async def _start_goal_flow(message: types.Message, state: FSMContext) -> None:
             "Мы специально не даем менять большую цель каждый день, чтобы ты не сбивал себе фокус.\n\n"
             "Если готов приступить уже сегодня — жми кнопку ниже 👇",
             inline_markup=after_goal_confirm_keyboard(me.username, CLUB_GROUP_URL),
-            inline_text="Если хочешь — можешь сразу перейти к сборке дня или вернуться в группу 👇",
+            single_message=True,
         )
         return
 
@@ -299,7 +305,7 @@ async def _start_goal_flow(message: types.Message, state: FSMContext) -> None:
         "Сейчас нужен только один понятный ориентир, к которому ты реально хочешь прийти 🔥\n\n"
         "Напиши свою <b>цель на 30 дней</b> 👇",
         inline_markup=back_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
-        inline_text="Если хочешь вернуться в группу — вот быстрый переход 👇",
+        single_message=True,
     )
 
 
@@ -467,7 +473,7 @@ async def show_30_day_goal(message: types.Message) -> None:
         f"{active_goal.get('goal_text', '')}\n\n"
         "Держи ее перед глазами и не распыляйся. Большой результат всегда начинается с ясного фокуса 🔥",
         inline_markup=back_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
-        inline_text="Вернуться в группу можно здесь 👇",
+        single_message=True,
     )
 
 
@@ -510,7 +516,7 @@ async def show_7_day_plan(message: types.Message) -> None:
         message,
         "\n".join(lines),
         inline_markup=back_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
-        inline_text="Вернуться в группу можно здесь 👇",
+        single_message=True,
     )
 
 
@@ -560,7 +566,7 @@ async def redo_report_video_note(query: types.CallbackQuery, state: FSMContext) 
         query,
         "Запиши один кружочек до 1 минуты, где коротко расскажешь, что сделал по всем задачам 👇",
         inline_markup=back_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
-        inline_text="Если передумал — вернуться в группу можно здесь 👇",
+        single_message=True,
     )
     await query.answer()
 
@@ -652,7 +658,7 @@ async def send_daily_report(query: types.CallbackQuery, state: FSMContext) -> No
         f"Общий LedoBonus: {total_ledobonus}."
         f"{closing_line}",
         inline_markup=back_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
-        inline_text="Вернуться в группу можно здесь 👇",
+        single_message=True,
     )
     await query.answer("Отчет отправлен ✅")
 
@@ -674,7 +680,7 @@ async def postpone_day_to_tomorrow(query: types.CallbackQuery, state: FSMContext
         "Сегодня не насилуем себя фальшивой продуктивностью.\n"
         "Отдохни, а завтра вернись и собери новый день с ясной головой ✨",
         inline_markup=back_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
-        inline_text="Вернуться в группу можно здесь 👇",
+        single_message=True,
     )
     await query.answer()
 
@@ -899,7 +905,7 @@ async def open_goal_day_step(query: types.CallbackQuery, state: FSMContext) -> N
         query,
         prompts.get(day_number, "Напиши фокус дня 👇"),
         inline_markup=back_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
-        inline_text="Если хочешь прерваться — вернуться в группу можно здесь 👇",
+        single_message=True,
     )
     await query.answer()
 
