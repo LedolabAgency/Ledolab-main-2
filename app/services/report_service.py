@@ -307,6 +307,7 @@ async def save_daily_report(
         report["bonus_awarded"] = bonus_awarded
         report["total_ledoscore"] = total_ledoscore
         report["total_ledobonus"] = total_ledobonus
+        report["weekly_ledoscore"] = weekly_ledoscore
         return report
     except Exception as e:
         logger.error(f"Error saving daily report {user_id}: {e}", exc_info=True)

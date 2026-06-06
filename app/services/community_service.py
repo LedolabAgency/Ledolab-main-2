@@ -19,7 +19,7 @@ KYIV_TZ = ZoneInfo("Europe/Kiev")
 def _week_window(now: datetime) -> tuple[datetime, datetime]:
     days_since_sunday = (now.weekday() + 1) % 7
     last_sunday = now.date() - timedelta(days=days_since_sunday)
-    week_start = datetime.combine(last_sunday, time(21, 0), tzinfo=KYIV_TZ)
+    week_start = datetime.combine(last_sunday, time(22, 0), tzinfo=KYIV_TZ)
     if now < week_start:
         week_start -= timedelta(days=7)
     return week_start, week_start + timedelta(days=7)

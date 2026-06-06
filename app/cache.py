@@ -6,10 +6,12 @@ Handles FSM storage, distributed locks, and caching.
 import logging
 from datetime import datetime, timedelta
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 import redis.asyncio as redis
 from app.config import REDIS_URL
 
 logger = logging.getLogger(__name__)
+KYIV_TZ = ZoneInfo("Europe/Kiev")
 
 # Global Redis client
 redis_client: Optional[redis.Redis] = None
@@ -188,16 +190,16 @@ class KeyManager:
 
 def seconds_until_midnight() -> int:
     """Return seconds until the next local midnight."""
-    now = datetime.now()
+    now = datetime.now(KYIV_TZ)
     tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
     ttl = int((tomorrow - now).total_seconds())
     return max(ttl, 60)
 
 
 def seconds_until_next_sunday_21() -> int:
-    """Return seconds until the next Sunday 21:00 local time."""
-    now = datetime.now()
-    target = now.replace(hour=21, minute=0, second=0, microsecond=0)
+    """Return seconds until the next Sunday 22:00 Kyiv time."""
+    now = datetime.now(KYIV_TZ)
+    target = now.replace(hour=22, minute=0, second=0, microsecond=0)
     days_ahead = (6 - now.weekday()) % 7
     target = target + timedelta(days=days_ahead)
     if target <= now:
@@ -207,8 +209,8 @@ def seconds_until_next_sunday_21() -> int:
 
 
 def seconds_until_next_22() -> int:
-    """Return seconds until the next local 22:00."""
-    now = datetime.now()
+    """Return seconds until the next Kyiv 22:00."""
+    now = datetime.now(KYIV_TZ)
     target = now.replace(hour=22, minute=0, second=0, microsecond=0)
     if target <= now:
         target += timedelta(days=1)

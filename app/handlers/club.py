@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from aiogram import F, Router, types
 from aiogram.filters import Command
@@ -23,10 +24,11 @@ from app.states.quiz import ReportStates, TaskStates
 
 logger = logging.getLogger(__name__)
 router = Router()
+KYIV_TZ = ZoneInfo("Europe/Kiev")
 
 
 def _today() -> str:
-    now = datetime.now()
+    now = datetime.now(KYIV_TZ)
     if now.hour >= 22:
         now = now.replace(hour=0, minute=0, second=0, microsecond=0)
         now = now + timedelta(days=1)
@@ -50,6 +52,7 @@ def _goal_deadline_text(goal: dict) -> str:
         return ""
     try:
         created_dt = datetime.fromisoformat(created_raw.replace("Z", "+00:00"))
+        created_dt = created_dt.astimezone(KYIV_TZ)
         finish_dt = created_dt + timedelta(days=30)
         return (
             f"Поставлена: {created_dt.strftime('%d.%m.%Y')}\n"
@@ -226,7 +229,7 @@ async def save_day_tasks(message: types.Message, state: FSMContext) -> None:
         await state.clear()
         return
 
-    raw_tasks = [line.strip("-• \t") for line in message.text.splitlines() if line.strip()]
+    raw_tasks = [line.strip("-• \t") for line in (message.text or "").splitlines() if line.strip()]
     if len(raw_tasks) != 3:
         await message.answer("Нужно отправить ровно 3 задачи. Каждую задачу с новой строки.")
         return
@@ -252,6 +255,7 @@ async def save_day_tasks(message: types.Message, state: FSMContext) -> None:
             goal_id=active_goal["id"] if active_goal else None,
         )
 
+    me = await message.bot.get_me()
     await message.answer(
         "📅 День зафиксирован.\n\nТвои 3 задачи сохранены. Вечером возвращайся и сдавай отчет.",
         reply_markup=club_main_menu(details_bot_username=me.username),

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 from html import escape
+from zoneinfo import ZoneInfo
 
 from aiogram import F, Router, types
 from aiogram.filters import Command, CommandObject, CommandStart
@@ -34,10 +35,11 @@ from app.states.quiz import GoalStates, ReportStates, TaskStates
 logger = logging.getLogger(__name__)
 router = Router()
 RETURN_GROUP_URL = GROUP_ENTRY_URL or CLUB_GROUP_URL
+KYIV_TZ = ZoneInfo("Europe/Kiev")
 
 
 def _club_now() -> datetime:
-    return datetime.now()
+    return datetime.now(KYIV_TZ)
 
 
 def _club_day_date(now: datetime | None = None) -> str:
@@ -96,7 +98,7 @@ async def _show_day_intro(
         f"Сегодняшний фокус из твоего 5-дневного плана:\n📍 <i>{week_hint}</i>\n\n"
         "Если готов — жми кнопку ниже 👇",
         inline_markup=day_start_keyboard(),
-        inline_text="Если пока не хочешь собирать день — можешь вернуться в группу 👇",
+        single_message=True,
     )
 
 
@@ -634,8 +636,7 @@ async def send_daily_report(query: types.CallbackQuery, state: FSMContext) -> No
     await state.clear()
     bonus_awarded = int(report.get("bonus_awarded") or 0)
     streak_day = int(report.get("current_streak") or 0)
-    total_ledoscore = int(report.get("total_ledoscore") or 0)
-    total_ledobonus = int(report.get("total_ledobonus") or 0)
+    weekly_ledoscore = int(report.get("weekly_ledoscore") or 0)
     bonus_line = (
         f"+{bonus_awarded} LedoBonus за день {streak_day} из 5.\n"
         if bonus_awarded > 0 and streak_day > 0
@@ -652,8 +653,7 @@ async def send_daily_report(query: types.CallbackQuery, state: FSMContext) -> No
         "+30 LedoScore за отчет.\n"
         f"{bonus_line}"
         f"День пути: {max(streak_day, 1)}/5.\n"
-        f"Общий LedoScore: {total_ledoscore}.\n"
-        f"Общий LedoBonus: {total_ledobonus}."
+        f"LedoScore за неделю: {weekly_ledoscore}."
         f"{closing_line}",
         inline_markup=back_to_group_keyboard(RETURN_GROUP_URL) if RETURN_GROUP_URL else None,
         single_message=True,
@@ -1000,18 +1000,23 @@ async def confirm_goal_flow(query: types.CallbackQuery, state: FSMContext) -> No
         )
 
     if REPORTS_GROUP_ID:
-        user_name = query.from_user.full_name or query.from_user.first_name or "Участник"
+        user_label = mention_service.build_user_mention(
+            telegram_id=query.from_user.id,
+            username=user.get("username"),
+            first_name=user.get("first_name") or query.from_user.first_name,
+            fallback="Участник",
+        )
         group_text_lines = [
             "🔥 <b>Новый предприниматель зашел в игру всерьез</b>\n",
-            f"<b>{user_name}</b> только что собрал свой маршрут в <b>LedoLab Business Club</b>.",
+            f"{user_label} только что собрал свой маршрут в <b>LedoLab Business Club</b>.",
             "",
             "🎯 <b>Цель на 30 дней:</b>",
-            goal_text,
+            escape(goal_text),
             "",
             "📅 <b>Фокус на ближайшие 5 дней:</b>",
         ]
         for idx, milestone in enumerate(milestones, 1):
-            group_text_lines.append(f"{idx}. {milestone}")
+            group_text_lines.append(f"{idx}. {escape(milestone)}")
         group_text_lines.extend(
             [
                 "",

@@ -22,7 +22,7 @@ def _is_reminder_window(now: datetime) -> bool:
 
 
 def _is_weekly_final_window(now: datetime) -> bool:
-    return now.weekday() == 6 and now.hour == 21 and now.minute < 5
+    return now.weekday() == 6 and now.hour == 22 and now.minute < 5
 
 
 async def _tick(bot: Bot) -> None:

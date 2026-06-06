@@ -4,12 +4,14 @@ import logging
 import time
 from datetime import datetime
 from html import escape
+from zoneinfo import ZoneInfo
 
 from aiogram import Bot
 
 from app.config import ADMIN_IDS
 
 logger = logging.getLogger(__name__)
+KYIV_TZ = ZoneInfo("Europe/Kiev")
 
 ALERT_COOLDOWN_SECONDS = 300
 _last_alerts: dict[str, float] = {}
@@ -32,7 +34,7 @@ async def notify_admins_about_error(bot: Bot | None, place: str, error: Exceptio
     if _is_on_cooldown(error_key):
         return
 
-    now = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+    now = datetime.now(KYIV_TZ).strftime("%d.%m.%Y %H:%M:%S")
     text = (
         "🚨 <b>LedoLab Error</b>\n\n"
         f"📍 Место: <code>{escape(place)}</code>\n"
