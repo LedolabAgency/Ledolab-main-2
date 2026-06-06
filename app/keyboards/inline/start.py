@@ -191,6 +191,16 @@ def after_goal_confirm_keyboard(
     return types.InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def next_route_keyboard(group_url: str | None = None) -> types.InlineKeyboardMarkup:
+    """Actions after a 5-day route is completed."""
+    rows: list[list[types.InlineKeyboardButton]] = [
+        [types.InlineKeyboardButton(text="🚀 Собрать новый маршрут", callback_data="goal_route_refresh")]
+    ]
+    if group_url:
+        rows.append([types.InlineKeyboardButton(text="↩️ Вернуться в группу", url=group_url)])
+    return types.InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def back_to_group_keyboard(group_url: str | None = None) -> types.InlineKeyboardMarkup | None:
     """Simple inline button back to the club group."""
     if not group_url:

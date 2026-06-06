@@ -623,8 +623,31 @@ async def set_active_goal(
         return None
 
 
+async def update_active_goal_milestones(
+    user_id: str,
+    milestones: List[str],
+) -> Optional[Dict[str, Any]]:
+    """Replace the 5-day route for the current active 30-day goal."""
+    try:
+        sb = get_supabase()
+        result = (
+            sb.table("goals")
+            .update({"milestones": milestones})
+            .eq("user_id", user_id)
+            .eq("status", "active")
+            .execute()
+        )
+        if result.data:
+            logger.info("✅ Active goal route updated: %s", user_id)
+            return result.data[0]
+        return None
+    except Exception as e:
+        logger.error(f"Error updating active goal route {user_id}: {e}", exc_info=True)
+        return None
+
+
 async def get_week_plan_for_user(user_id: str) -> List[str]:
-    """Return the current 7-day plan for the active goal."""
+    """Return the current 5-day plan for the active goal."""
     goal = await get_active_goal(user_id)
     if not goal:
         return []

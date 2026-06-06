@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from html import escape
 from zoneinfo import ZoneInfo
 
@@ -24,6 +24,7 @@ from app.keyboards.inline.start import (
     goal_day_step_keyboard,
     goal_edit_days_keyboard,
     goal_review_keyboard,
+    next_route_keyboard,
     open_private_flow_keyboard,
     private_hub_reply_keyboard,
     quiz_reply_keyboard,
@@ -54,6 +55,44 @@ def _club_day_deadline_text(now: datetime | None = None) -> str:
     if current.hour >= 22:
         return "до 22:00 завтрашнего дня"
     return "до 22:00 сегодняшнего дня"
+
+
+def _parse_goal_created_at(goal: dict) -> datetime | None:
+    try:
+        created_raw = str(goal.get("created_at") or "")
+        if not created_raw:
+            return None
+        return datetime.fromisoformat(created_raw.replace("Z", "+00:00")).astimezone(KYIV_TZ)
+    except Exception:
+        return None
+
+
+def _goal_is_inside_30_days(goal: dict) -> bool:
+    created_at = _parse_goal_created_at(goal)
+    if not created_at:
+        return True
+    return _club_now() < created_at + timedelta(days=30)
+
+
+async def _next_path_day_number(telegram_id: int, operational_date: str) -> int:
+    """Return which 5-day route focus should be used for the next day setup."""
+    current_streak = int((await cache.get_data(cache.KeyManager.get_streak_key(telegram_id))) or 0)
+    last_report_date = await cache.get_data(cache.KeyManager.get_last_report_date_key(telegram_id))
+    if not last_report_date:
+        return 1
+
+    try:
+        days_after_last_report = (
+            date.fromisoformat(operational_date) - date.fromisoformat(str(last_report_date))
+        ).days
+    except Exception:
+        return 1
+
+    if days_after_last_report == 1:
+        return 1 if current_streak >= 5 else max(1, min(current_streak + 1, 5))
+    if days_after_last_report == 0:
+        return max(1, min(current_streak, 5))
+    return 1
 
 
 async def _show_day_closed_message(target: types.Message | types.CallbackQuery) -> None:
@@ -87,7 +126,9 @@ async def _show_day_intro(
     target: types.Message | types.CallbackQuery,
     week_hint: str,
     deadline_text: str,
+    path_day_number: int | None = None,
 ) -> None:
+    path_line = f"День пути: <b>{path_day_number}/5</b>\n" if path_day_number else ""
     await _answer_private_with_actions(
         target,
         "Отлично 🔥\n\n"
@@ -95,7 +136,8 @@ async def _show_day_intro(
         "Важно:\n"
         f"задачи на этот день действуют {deadline_text}.\n"
         "Именно по ним вечером ты будешь сдавать отчет.\n\n"
-        f"Сегодняшний фокус из твоего 5-дневного плана:\n📍 <i>{week_hint}</i>\n\n"
+        f"{path_line}"
+        f"Сегодняшний фокус из твоего 5-дневного маршрута:\n📍 <i>{escape(week_hint)}</i>\n\n"
         "Если готов — жми кнопку ниже 👇",
         inline_markup=day_start_keyboard(),
         single_message=True,
@@ -120,7 +162,7 @@ async def _show_task_prompt(
 
 
 async def _show_day_review(target: types.Message | types.CallbackQuery, tasks: list[str]) -> None:
-    tasks_text = "\n".join(f"{idx}. {task}" for idx, task in enumerate(tasks, 1))
+    tasks_text = "\n".join(f"{idx}. {escape(str(task))}" for idx, task in enumerate(tasks, 1))
     await _answer_private_with_actions(
         target,
         "🧠 <b>Проверь задачи на день:</b>\n\n"
@@ -241,12 +283,12 @@ def _build_goal_review(goal_text: str, milestones: list[str]) -> str:
     lines = [
         "🧠 Проверь свой маршрут перед подтверждением\n",
         "🎯 <b>Твоя большая цель на 30 дней:</b>",
-        goal_text,
+        escape(goal_text),
         "",
         "📅 <b>Фокус на ближайшие 5 дней:</b>",
     ]
     for idx, milestone in enumerate(milestones, 1):
-        lines.append(f"{idx}. {milestone}")
+        lines.append(f"{idx}. {escape(str(milestone))}")
     lines.extend(
         [
             "",
@@ -339,6 +381,29 @@ async def _start_day_flow(message: types.Message, state: FSMContext) -> None:
         )
         return
 
+    current_streak = int((await cache.get_data(cache.KeyManager.get_streak_key(message.from_user.id))) or 0)
+    if current_streak >= 5 and _goal_is_inside_30_days(active_goal):
+        await _answer_private_with_actions(
+            message,
+            "🏆 <b>Предыдущий путь на 5 дней уже закрыт.</b>\n\n"
+            "Чтобы не крутиться по старому кругу, сначала собери новый 5-дневный маршрут к своей 30-дневной цели.",
+            inline_markup=next_route_keyboard(RETURN_GROUP_URL),
+            single_message=True,
+        )
+        return
+
+    if current_streak >= 5 and not _goal_is_inside_30_days(active_goal):
+        await state.clear()
+        await state.set_state(GoalStates.waiting_goal_text)
+        await _answer_private_with_actions(
+            message,
+            "🏁 30-дневный цикл уже закрыт.\n\n"
+            "Старый маршрут больше не тянем. Напиши новую цель на 30 дней 👇",
+            inline_markup=back_to_group_keyboard(RETURN_GROUP_URL) if RETURN_GROUP_URL else None,
+            single_message=True,
+        )
+        return
+
     today = _club_day_date()
     deadline_text = _club_day_deadline_text()
     today_lock = await cache.get_data(cache.KeyManager.get_day_plan_lock_key(message.from_user.id, today))
@@ -351,13 +416,19 @@ async def _start_day_flow(message: types.Message, state: FSMContext) -> None:
 
     if today_tasks or today_lock:
         tasks_text = "\n".join(
-            f"{idx}. {task.get('task_text', '')}" for idx, task in enumerate(today_tasks[:3], 1)
+            f"{idx}. {escape(str(task.get('task_text', '')))}" for idx, task in enumerate(today_tasks[:3], 1)
         ) or "Пока задачи не найдены в базе, но дневной слот уже зафиксирован."
         await _show_saved_day_message(message, tasks_text, deadline_text)
         return
 
     milestones = active_goal.get("milestones") or []
-    week_hint = milestones[0] if milestones else "выбери 3 действия, которые реально двигают тебя к месячной цели"
+    path_day_number = await _next_path_day_number(message.from_user.id, today)
+    milestone_index = max(0, min(path_day_number - 1, len(milestones) - 1))
+    week_hint = (
+        milestones[milestone_index]
+        if milestones
+        else "выбери 3 действия, которые реально двигают тебя к месячной цели"
+    )
 
     await state.clear()
     await state.set_state(TaskStates.waiting_task_text)
@@ -367,8 +438,9 @@ async def _start_day_flow(message: types.Message, state: FSMContext) -> None:
         day_task_step=0,
         day_operational_date=today,
         day_week_hint=week_hint,
+        day_path_number=path_day_number,
     )
-    await _show_day_intro(message, week_hint, deadline_text)
+    await _show_day_intro(message, week_hint, deadline_text, path_day_number)
 
 
 @router.message(CommandStart())
@@ -505,7 +577,7 @@ async def show_7_day_plan(message: types.Message) -> None:
 
     lines = ["📅 <b>Твой план на 5 дней</b>\n"]
     for idx, milestone in enumerate(milestones, 1):
-        lines.append(f"{idx}. {milestone}")
+        lines.append(f"{idx}. {escape(str(milestone))}")
     lines.extend(
         [
             "",
@@ -637,16 +709,25 @@ async def send_daily_report(query: types.CallbackQuery, state: FSMContext) -> No
     bonus_awarded = int(report.get("bonus_awarded") or 0)
     streak_day = int(report.get("current_streak") or 0)
     weekly_ledoscore = int(report.get("weekly_ledoscore") or 0)
+    active_goal = await database.get_active_goal(report_user_id) if streak_day >= 5 else None
     bonus_line = (
         f"+{bonus_awarded} LedoBonus за день {streak_day} из 5.\n"
         if bonus_awarded > 0 and streak_day > 0
         else ""
     )
-    closing_line = (
-        "\n🏆 Ты закрыл путь на 5 дней.\nСледующий отчет начнет новый путь с дня 1."
-        if streak_day >= 5
-        else ""
-    )
+    closing_line = ""
+    result_markup = back_to_group_keyboard(RETURN_GROUP_URL) if RETURN_GROUP_URL else None
+    if streak_day >= 5 and active_goal and _goal_is_inside_30_days(active_goal):
+        closing_line = (
+            "\n\n🏆 Ты закрыл путь на 5 дней.\n"
+            "Большая 30-дневная цель остается. Давай соберем следующий маршрут?"
+        )
+        result_markup = next_route_keyboard(RETURN_GROUP_URL)
+    elif streak_day >= 5:
+        closing_line = (
+            "\n\n🏁 Путь на 5 дней закрыт.\n"
+            "Если 30-дневный цикл уже закончился — дальше ставим новую большую цель."
+        )
     await _answer_private_with_actions(
         query,
         "🔥 Отчет отправлен.\n\n"
@@ -655,10 +736,75 @@ async def send_daily_report(query: types.CallbackQuery, state: FSMContext) -> No
         f"День пути: {max(streak_day, 1)}/5.\n"
         f"LedoScore за неделю: {weekly_ledoscore}."
         f"{closing_line}",
-        inline_markup=back_to_group_keyboard(RETURN_GROUP_URL) if RETURN_GROUP_URL else None,
+        inline_markup=result_markup,
         single_message=True,
     )
     await query.answer("Отчет отправлен ✅")
+
+
+@router.callback_query(F.data == "goal_route_refresh")
+async def start_next_route_flow(query: types.CallbackQuery, state: FSMContext) -> None:
+    if not await database.has_completed_quiz(query.from_user.id):
+        await query.answer("Сначала пройди квиз.", show_alert=True)
+        return
+
+    user = await database.ensure_club_user(
+        telegram_id=query.from_user.id,
+        username=query.from_user.username,
+        first_name=query.from_user.first_name,
+        language_code=query.from_user.language_code or "ru",
+    )
+    if not user:
+        await query.answer("Не удалось подготовить профиль.", show_alert=True)
+        return
+
+    active_goal = await database.get_active_goal(user["id"])
+    if not active_goal:
+        await state.clear()
+        await state.set_state(GoalStates.waiting_goal_text)
+        await _answer_private_with_actions(
+            query,
+            "🎯 Активной 30-дневной цели уже нет.\n\n"
+            "Значит, начинаем новый цикл. Напиши новую цель на 30 дней 👇",
+            inline_markup=back_to_group_keyboard(RETURN_GROUP_URL) if RETURN_GROUP_URL else None,
+            single_message=True,
+        )
+        await query.answer()
+        return
+
+    if not _goal_is_inside_30_days(active_goal):
+        await state.clear()
+        await state.set_state(GoalStates.waiting_goal_text)
+        await _answer_private_with_actions(
+            query,
+            "🏁 30-дневный цикл уже подошел к финалу.\n\n"
+            "Не растягиваем старое. Напиши новую большую цель на следующие 30 дней 👇",
+            inline_markup=back_to_group_keyboard(RETURN_GROUP_URL) if RETURN_GROUP_URL else None,
+            single_message=True,
+        )
+        await query.answer()
+        return
+
+    goal_text = str(active_goal.get("goal_text") or "").strip()
+    await state.clear()
+    await state.set_state(GoalStates.waiting_day_text)
+    await state.update_data(
+        goal_text=goal_text,
+        milestones=[],
+        editing_day=None,
+        refresh_route=True,
+    )
+    await _answer_private_with_actions(
+        query,
+        "🔥 <b>Собираем новый маршрут на 5 дней.</b>\n\n"
+        "Большая цель остается прежней:\n"
+        f"🎯 <i>{escape(goal_text)}</i>\n\n"
+        "Сейчас нужны 5 свежих фокусов, которые двинут тебя дальше.\n"
+        "Нажми кнопку ниже и начнем с первого дня 👇",
+        inline_markup=goal_day_step_keyboard(1),
+        single_message=True,
+    )
+    await query.answer("Собираем новый маршрут 🚀")
 
 
 @router.callback_query(TaskStates.waiting_task_text, F.data == "day_go")
@@ -817,7 +963,7 @@ async def confirm_day_tasks(query: types.CallbackQuery, state: FSMContext) -> No
     await state.clear()
     await _show_saved_day_message(
         query,
-        "\n".join(f"{idx}. {task}" for idx, task in enumerate(tasks, 1)),
+        "\n".join(f"{idx}. {escape(str(task))}" for idx, task in enumerate(tasks, 1)),
         _club_day_deadline_text(),
     )
     await query.answer("Задачи на день зафиксированы ✅")
@@ -831,9 +977,10 @@ async def handle_day_flow_back(query: types.CallbackQuery, state: FSMContext) ->
     current_state = await state.get_state()
     tasks = list(data.get("day_tasks") or [])
     week_hint = str(data.get("day_week_hint") or "собери сильный день без перегруза")
+    path_day_number = int(data.get("day_path_number") or 1)
 
     if current_state == TaskStates.waiting_task_text.state:
-        await _show_day_intro(query, week_hint, _club_day_deadline_text())
+        await _show_day_intro(query, week_hint, _club_day_deadline_text(), path_day_number)
         await query.answer()
         return
 
@@ -972,6 +1119,7 @@ async def confirm_goal_flow(query: types.CallbackQuery, state: FSMContext) -> No
     data = await state.get_data()
     goal_text = data.get("goal_text", "").strip()
     milestones = [item.strip() for item in data.get("milestones", []) if item.strip()]
+    refresh_route = bool(data.get("refresh_route"))
     if not goal_text or len(milestones) < 5:
         await query.answer("Не хватает данных для сохранения.", show_alert=True)
         return
@@ -984,6 +1132,61 @@ async def confirm_goal_flow(query: types.CallbackQuery, state: FSMContext) -> No
     )
     if not user:
         await query.answer("Не удалось сохранить цель.", show_alert=True)
+        return
+
+    if refresh_route:
+        saved_goal = await database.update_active_goal_milestones(user["id"], milestones)
+        if not saved_goal:
+            await query.answer("Не удалось обновить маршрут в базе.", show_alert=True)
+            return
+
+        for day_number, milestone in enumerate(milestones, 1):
+            await cache.set_data(
+                cache.KeyManager.get_goal_day_lock_key(query.from_user.id, day_number),
+                milestone,
+                ex=cache.seconds_until_next_sunday_21(),
+            )
+        await cache.set_data(
+            cache.KeyManager.get_streak_key(query.from_user.id),
+            "0",
+            ex=30 * 24 * 60 * 60,
+        )
+
+        if REPORTS_GROUP_ID:
+            user_label = mention_service.build_user_mention(
+                telegram_id=query.from_user.id,
+                username=user.get("username"),
+                first_name=user.get("first_name") or query.from_user.first_name,
+                fallback="Участник",
+            )
+            group_text_lines = [
+                "🚀 <b>Новый 5-дневный маршрут собран</b>\n",
+                f"{user_label} продолжает движение к своей 30-дневной цели.",
+                "",
+                "🎯 <b>Цель:</b>",
+                escape(goal_text),
+                "",
+                "📅 <b>Новый маршрут на 5 дней:</b>",
+            ]
+            for idx, milestone in enumerate(milestones, 1):
+                group_text_lines.append(f"{idx}. {escape(milestone)}")
+            group_text_lines.append("\nСледующий круг начинается. Поддержите темп 🔥")
+            try:
+                await query.bot.send_message(REPORTS_GROUP_ID, "\n".join(group_text_lines))
+            except Exception as exc:
+                logger.error("Failed to post refreshed route to group: %s", exc, exc_info=True)
+
+        me = await query.bot.get_me()
+        await _answer_private_with_actions(
+            query,
+            "✅ <b>Новый 5-дневный маршрут зафиксирован.</b>\n\n"
+            "30-дневная цель остается прежней, но ближайшие 5 дней теперь свежие и понятные.\n\n"
+            "Когда будешь готов собрать сегодняшний день — жми кнопку ниже.",
+            inline_markup=after_goal_confirm_keyboard(me.username, RETURN_GROUP_URL),
+            single_message=True,
+        )
+        await state.clear()
+        await query.answer("Маршрут обновлен ✅")
         return
 
     saved_goal = await database.set_active_goal(user["id"], goal_text, milestones)
