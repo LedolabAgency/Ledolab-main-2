@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from aiogram import F, Router, types
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
 
 from app import cache, database
@@ -37,6 +37,19 @@ def _today() -> str:
 
 def _last_group_chat_key(user_id: int) -> str:
     return f"last_group_chat:{user_id}"
+
+
+def _is_admin(user_id: int | None) -> bool:
+    return bool(user_id and user_id in ADMIN_IDS)
+
+
+async def _delete_group_command_safely(message: types.Message) -> None:
+    if message.chat.type == "private":
+        return
+    try:
+        await message.delete()
+    except Exception as exc:
+        logger.debug("Failed to delete admin command %s: %s", message.message_id, exc)
 
 
 def _shorten_alert(text: str, limit: int = 110) -> str:
@@ -143,6 +156,86 @@ async def view_rules(query: types.CallbackQuery) -> None:
         "📈 Каждый отчёт приближает тебя к цели. 🚀"
     )
     await query.answer(text, show_alert=True)
+
+
+@router.message(Command("admin"))
+async def show_admin_help(message: types.Message) -> None:
+    if not _is_admin(message.from_user.id if message.from_user else None):
+        return
+
+    text = (
+        "🛡 <b>Админ-команды LedoLab</b>\n\n"
+        "<code>/admin</code> — показать эту подсказку\n"
+        "<code>/reset 516684869</code> — полностью очистить юзера\n"
+        "<code>/reset</code> ответом на сообщение юзера — очистить этого юзера\n\n"
+        "Reset чистит: квиз, цель, 5-дневный маршрут, задачи, отчеты, голоса, баллы, рефералку и Redis-замки."
+    )
+    sent = await message.answer(text)
+    if message.chat.type != "private":
+        await _delete_group_command_safely(message)
+        cleanup_service.schedule_delete_message(message.bot, sent.chat.id, sent.message_id, 180)
+
+
+@router.message(Command("reset"))
+async def reset_user_command(message: types.Message, command: CommandObject) -> None:
+    if not _is_admin(message.from_user.id if message.from_user else None):
+        await _delete_group_command_safely(message)
+        return
+
+    target_id: int | None = None
+    raw_arg = (command.args or "").strip()
+    if raw_arg:
+        first_arg = raw_arg.split()[0].strip()
+        if first_arg.isdigit():
+            target_id = int(first_arg)
+    if target_id is None and message.reply_to_message and message.reply_to_message.from_user:
+        target_id = message.reply_to_message.from_user.id
+
+    if target_id is None:
+        sent = await message.answer(
+            "Используй так:\n"
+            "<code>/reset 516684869</code>\n\n"
+            "Или ответь <code>/reset</code> на сообщение нужного юзера."
+        )
+        if message.chat.type != "private":
+            await _delete_group_command_safely(message)
+            cleanup_service.schedule_delete_message(message.bot, sent.chat.id, sent.message_id, 120)
+        return
+
+    stats = await database.reset_user_data(target_id)
+    redis_deleted = await cache.delete_keys_by_patterns(
+        [
+            f"quiz_done:{target_id}",
+            f"pending_referrer:{target_id}",
+            f"goal_lock:{target_id}",
+            f"goal_day_lock:{target_id}:*",
+            f"day_plan_lock:{target_id}:*",
+            f"streak:{target_id}",
+            f"last_report_date:{target_id}",
+            f"last_group_chat:{target_id}",
+            f"group_welcome:{target_id}",
+            f"group_referral_welcome:{target_id}",
+            f"throttle:*:{target_id}",
+            f"leda_fsm:*{target_id}*",
+        ]
+    )
+    stats_text = "\n".join(f"{name}: {count}" for name, count in stats.items() if count)
+    sent = await message.answer(
+        f"♻️ <b>Reset готов</b>\n\n"
+        f"Юзер: <code>{target_id}</code>\n"
+        f"Redis ключей удалено: <code>{redis_deleted}</code>\n\n"
+        f"{stats_text or 'В БД активных записей не было.'}"
+    )
+    logger.info(
+        "ADMIN reset completed | admin=%s target=%s stats=%s redis_deleted=%s",
+        message.from_user.id if message.from_user else None,
+        target_id,
+        stats,
+        redis_deleted,
+    )
+    if message.chat.type != "private":
+        await _delete_group_command_safely(message)
+        cleanup_service.schedule_delete_message(message.bot, sent.chat.id, sent.message_id, 180)
 
 
 @router.message(Command("menu"))
