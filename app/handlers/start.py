@@ -643,7 +643,8 @@ async def send_daily_report(query: types.CallbackQuery, state: FSMContext) -> No
     bonus_awarded = int(report.get("bonus_awarded") or 0)
     streak_day = int(report.get("current_streak") or 0)
     weekly_ledoscore = int(report.get("weekly_ledoscore") or 0)
-    active_goal = await database.get_active_goal(report_user_id) if streak_day >= 5 else None
+    route_completed = streak_day > 0 and streak_day % 5 == 0
+    active_goal = await database.get_active_goal(report_user_id) if route_completed else None
     bonus_line = (
         f"+{bonus_awarded} LedoBonus за день {streak_day} из 5.\n"
         if bonus_awarded > 0 and streak_day > 0
@@ -651,23 +652,24 @@ async def send_daily_report(query: types.CallbackQuery, state: FSMContext) -> No
     )
     closing_line = ""
     result_markup = back_to_group_keyboard(RETURN_GROUP_URL) if RETURN_GROUP_URL else None
-    if streak_day >= 5 and active_goal and _goal_is_inside_30_days(active_goal):
+    if route_completed and active_goal and _goal_is_inside_30_days(active_goal):
         closing_line = (
             "\n\n🏆 Ты закрыл путь на 5 дней.\n"
             "Большая 30-дневная цель остается. Давай соберем следующий маршрут?"
         )
         result_markup = next_route_keyboard(RETURN_GROUP_URL)
-    elif streak_day >= 5:
+    elif route_completed:
         closing_line = (
             "\n\n🏁 Путь на 5 дней закрыт.\n"
             "Если 30-дневный цикл уже закончился — дальше ставим новую большую цель."
         )
+    route_day_number = streak_day % 5 or 5 if streak_day > 0 else 1
     await _answer_private_with_actions(
         query,
         "🔥 Отчет отправлен.\n\n"
         "+30 LedoScore за отчет.\n"
         f"{bonus_line}"
-        f"День пути: {max(streak_day, 1)}/5.\n"
+        f"День пути: {route_day_number}/5.\n"
         f"LedoScore за неделю: {weekly_ledoscore}."
         f"{closing_line}",
         inline_markup=result_markup,
