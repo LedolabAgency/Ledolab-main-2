@@ -5,28 +5,23 @@ Service layer for daily report submission, public moderation, and admin review.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, time, timedelta
+from datetime import datetime
 from html import escape
 from typing import Any, Dict, List, Optional
-from zoneinfo import ZoneInfo
 
 from aiogram import types
 
 from app import cache, database
-from app.services import mention_service
 
 logger = logging.getLogger(__name__)
-KYIV_TZ = ZoneInfo("Europe/Kiev")
 
 DAILY_REPORT_SCORE = 30
 SUSPICIOUS_FLAGS_THRESHOLD = 3
 WARNING_SCORE_PENALTY = 15
-LEDOBONUS_BY_DAY = {
-    1: 10,
-    2: 15,
-    3: 20,
-    4: 25,
-    5: 30,
+STREAK_BONUSES = {
+    3: 10,
+    5: 25,
+    10: 50,
 }
 
 
@@ -128,21 +123,16 @@ def render_report_preview(entries: List[Dict[str, Any]]) -> str:
 
 
 def build_group_summary(
-    telegram_id: Optional[int],
     username: Optional[str],
     entries: List[Dict[str, Any]],
     *,
     score_awarded: Optional[int] = None,
-    bonus_awarded: Optional[int] = None,
     current_streak: Optional[int] = None,
-    weekly_ledoscore: Optional[int] = None,
+    total_ledoscore: Optional[int] = None,
 ) -> str:
-    author = mention_service.build_user_mention(
-        telegram_id=telegram_id,
-        username=username,
-        fallback="Участник клуба",
-    )
-    lines = [f"{author}\n", "📤 Отчет за день:\n"]
+    author = f"@{username}" if username else "Участник клуба"
+    safe_author = escape(str(author))
+    lines = [f"{safe_author}\n", "📤 Отчет за день:\n"]
     if entries:
         entry = entries[0]
         task_lines = entry.get("task_lines") or []
@@ -155,46 +145,18 @@ def build_group_summary(
         comment = (entry.get("comment_text") or "").strip()
         if comment:
             lines.append(f"💬 {escape(comment)}")
-    if (
-        score_awarded is not None
-        or bonus_awarded is not None
-        or current_streak is not None
-        or weekly_ledoscore is not None
-    ):
+    if score_awarded is not None or current_streak is not None or total_ledoscore is not None:
         lines.append("")
-        lines.append("📊 Результат дня:")
+        lines.append("📊 LedoScore:")
         if score_awarded is not None:
-            lines.append(f"LedoScore: +{int(score_awarded)}")
-        if bonus_awarded is not None:
-            lines.append(f"LedoBonus: +{int(bonus_awarded)}")
+            lines.append(f"За этот отчет: +{int(score_awarded)}")
         if current_streak is not None:
-            lines.append("")
-            lines.append("📈 До закрытия пути")
-            lines.append(_render_path_progress(int(current_streak), 5))
-            remaining = max(5 - int(current_streak), 0)
-            lines.append("Путь закрыт 🔥" if remaining == 0 else f"Еще {remaining} отчетов 🔥")
-        if weekly_ledoscore is not None:
-            lines.append("")
-            lines.append(f"LedoScore за неделю: {int(weekly_ledoscore)}")
+            lines.append(f"Текущий стрик: {int(current_streak)} дн.")
+        if total_ledoscore is not None:
+            lines.append(f"Общий баланс: {int(total_ledoscore)}")
     lines.append("")
     lines.append("Отчет отправлен в клуб.")
     return "\n".join(lines)
-
-
-def _render_path_progress(current: int, total: int, blocks: int = 10) -> str:
-    current = max(0, min(current, total))
-    filled = int(round((current / total) * blocks)) if total else 0
-    filled = max(0, min(filled, blocks))
-    return f"{'█' * filled}{'░' * (blocks - filled)} {current}/{total}"
-
-
-def _week_window(now: datetime) -> tuple[datetime, datetime]:
-    days_since_sunday = (now.weekday() + 1) % 7
-    last_sunday = now.date() - timedelta(days=days_since_sunday)
-    week_start = datetime.combine(last_sunday, time(22, 0), tzinfo=KYIV_TZ)
-    if now < week_start:
-        week_start -= timedelta(days=7)
-    return week_start, week_start + timedelta(days=7)
 
 
 def build_admin_summary(user_label: str, goal_text: str, entries: List[Dict[str, Any]], flags: int) -> str:
@@ -217,20 +179,21 @@ def build_admin_approved_summary(original_text: str) -> str:
     return original_text + "\n\n✅ Отчет проверен админом — все ок."
 
 
-def get_report_bonus_awarded(report: Dict[str, Any]) -> int:
-    payload = report.get("report_payload") or []
-    if not payload or not isinstance(payload, list):
-        return 0
-    first_entry = payload[0] or {}
-    return int(first_entry.get("bonus_awarded") or 0)
+def _extract_proof_file_ids(entries: List[Dict[str, Any]]) -> List[str]:
+    file_ids: List[str] = []
+    for entry in entries:
+        for key in ("file_id", "proof_file_id", "video_id", "video_note_file_id"):
+            value = str(entry.get(key) or "").strip()
+            if value:
+                file_ids.append(value)
+    return file_ids
 
 
-def get_report_streak_day(report: Dict[str, Any]) -> int:
-    payload = report.get("report_payload") or []
-    if not payload or not isinstance(payload, list):
-        return 0
-    first_entry = payload[0] or {}
-    return int(first_entry.get("streak_day") or 0)
+def _has_forwarded_proof(entries: List[Dict[str, Any]]) -> bool:
+    for entry in entries:
+        if entry.get("forward_from") or entry.get("forward_date") or entry.get("forward_origin"):
+            return True
+    return False
 
 
 async def save_daily_report(
@@ -240,8 +203,31 @@ async def save_daily_report(
     report_date: str,
     entries: List[Dict[str, Any]],
 ) -> Optional[Dict[str, Any]]:
-    """Persist a daily report, award LedoScore and separate LedoBonus."""
+    """Persist and immediately award the base daily score."""
     try:
+        if _has_forwarded_proof(entries):
+            logger.warning(
+                "Rejected forwarded daily report proof: user_id=%s telegram_id=%s date=%s",
+                user_id,
+                telegram_id,
+                report_date,
+            )
+            return None
+
+        proof_file_ids = _extract_proof_file_ids(entries)
+        if proof_file_ids:
+            unique_proof_file_ids = list(dict.fromkeys(proof_file_ids))
+            for proof_file_id in unique_proof_file_ids:
+                if await database.has_report_file_for_user(user_id, proof_file_id):
+                    logger.warning(
+                        "Rejected duplicate daily report proof: user_id=%s telegram_id=%s date=%s file_id=%s",
+                        user_id,
+                        telegram_id,
+                        report_date,
+                        proof_file_id,
+                    )
+                    return None
+
         score_awarded = DAILY_REPORT_SCORE
         streak_key = cache.KeyManager.get_streak_key(telegram_id)
         last_report_key = cache.KeyManager.get_last_report_date_key(telegram_id)
@@ -254,60 +240,41 @@ async def save_daily_report(
             report_dt = datetime.fromisoformat(report_date).date()
             if last_report_date:
                 last_dt = datetime.fromisoformat(last_report_date).date()
-                if (report_dt - last_dt).days == 1:
-                    new_streak = 1 if current_streak >= 5 else current_streak + 1
-                else:
-                    new_streak = 1
+                new_streak = current_streak + 1 if (report_dt - last_dt).days == 1 else 1
             else:
                 new_streak = 1
 
-        bonus_awarded = LEDOBONUS_BY_DAY.get(new_streak, 0)
-        entries_to_store = [dict(entry) for entry in entries]
-        if entries_to_store:
-            entries_to_store[0]["bonus_awarded"] = bonus_awarded
-            entries_to_store[0]["streak_day"] = new_streak
+        streak_bonus = STREAK_BONUSES.get(new_streak, 0)
+        score_awarded += streak_bonus
         tasks_snapshot = [entry["task_text"] for entry in entries]
-        summary_text = build_group_summary(telegram_id, username, entries)
+        summary_text = build_group_summary(username, entries)
         report = await database.create_or_update_daily_report(
             user_id=user_id,
             report_date=report_date,
             tasks_snapshot=tasks_snapshot,
-            report_payload=entries_to_store,
+            report_payload=entries,
             summary_text=summary_text,
             score_awarded=score_awarded,
             status="approved",
         )
         if not report:
             return None
-        await database.award_score(user_id, score_awarded, "Daily report submitted")
-        if bonus_awarded > 0:
-            await database.award_score(user_id, bonus_awarded, f"LedoBonus day {new_streak}")
+        await database.award_score(user_id, score_awarded, f"Daily report submitted (streak {new_streak})")
         total_ledoscore = await database.get_user_total_score(user_id)
-        total_ledobonus = await database.get_user_total_bonus(user_id)
-        week_start, week_end = _week_window(datetime.now(KYIV_TZ))
-        weekly_ledoscore = await database.get_user_score_for_period(
-            user_id,
-            week_start.isoformat(),
-            week_end.isoformat(),
-        )
         await cache.set_data(streak_key, str(new_streak))
         await cache.set_data(last_report_key, report_date)
         summary_text = build_group_summary(
-            telegram_id,
             username,
             entries,
             score_awarded=score_awarded,
-            bonus_awarded=bonus_awarded,
             current_streak=new_streak,
-            weekly_ledoscore=weekly_ledoscore,
+            total_ledoscore=total_ledoscore,
         )
         await database.update_daily_report_summary_text(report["id"], summary_text)
         report["summary_text"] = summary_text
         report["current_streak"] = new_streak
-        report["bonus_awarded"] = bonus_awarded
+        report["streak_bonus"] = streak_bonus
         report["total_ledoscore"] = total_ledoscore
-        report["total_ledobonus"] = total_ledobonus
-        report["weekly_ledoscore"] = weekly_ledoscore
         return report
     except Exception as e:
         logger.error(f"Error saving daily report {user_id}: {e}", exc_info=True)

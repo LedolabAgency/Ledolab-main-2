@@ -838,13 +838,33 @@ async def create_report(
         Report data or None
     """
     try:
+        normalized_file_id = str(file_id or "").strip()
+        if normalized_file_id:
+            sb = get_supabase()
+            duplicate_check = (
+                sb.table("reports")
+                .select("id")
+                .eq("user_id", user_id)
+                .eq("file_id", normalized_file_id)
+                .limit(1)
+                .execute()
+            )
+            if duplicate_check.data:
+                logger.warning(
+                    "Rejected duplicate report proof: user_id=%s task_id=%s file_id=%s",
+                    user_id,
+                    task_id,
+                    normalized_file_id,
+                )
+                return None
+
         sb = get_supabase()
         result = sb.table("reports").insert({
             "user_id": user_id,
             "task_id": task_id,
             "report_text": report_text,
             "proof_type": proof_type,
-            "file_id": file_id,
+            "file_id": normalized_file_id or None,
         }).execute()
         
         if result.data:
@@ -855,6 +875,34 @@ async def create_report(
     except Exception as e:
         logger.error(f"Error creating report {user_id}: {e}", exc_info=True)
         return None
+
+
+async def has_report_file_for_user(user_id: str, file_id: str) -> bool:
+    """Check whether a proof file was already used by this user."""
+    try:
+        normalized_user_id = str(user_id).strip()
+        normalized_file_id = str(file_id or "").strip()
+        if not normalized_user_id or not normalized_file_id:
+            return False
+
+        sb = get_supabase()
+        result = (
+            sb.table("reports")
+            .select("id")
+            .eq("user_id", normalized_user_id)
+            .eq("file_id", normalized_file_id)
+            .limit(1)
+            .execute()
+        )
+        return bool(result.data)
+    except Exception as e:
+        logger.error(
+            "Error checking report file usage for user %s: %s",
+            user_id,
+            e,
+            exc_info=True,
+        )
+        return False
 
 
 async def get_daily_report(user_id: str, report_date: str) -> Optional[Dict[str, Any]]:
@@ -1236,68 +1284,16 @@ async def get_user_total_score(user_id: int) -> int:
         sb = get_supabase()
         result = (
             sb.table("scores")
-            .select("points,reason")
+            .select("points")
             .eq("user_id", user_id)
             .execute()
         )
         
         if result.data:
-            return sum(
-                int(record.get("points") or 0)
-                for record in result.data
-                if not str(record.get("reason") or "").startswith("LedoBonus ")
-            )
+            return sum(record["points"] for record in result.data)
         return 0
     except Exception as e:
         logger.error(f"Error getting score {user_id}: {e}", exc_info=True)
-        return 0
-
-
-async def get_user_total_bonus(user_id: int) -> int:
-    """Get user's total LedoBonus."""
-    try:
-        sb = get_supabase()
-        result = (
-            sb.table("scores")
-            .select("points,reason")
-            .eq("user_id", user_id)
-            .execute()
-        )
-
-        if result.data:
-            return sum(
-                int(record.get("points") or 0)
-                for record in result.data
-                if str(record.get("reason") or "").startswith("LedoBonus ")
-            )
-        return 0
-    except Exception as e:
-        logger.error(f"Error getting bonus {user_id}: {e}", exc_info=True)
-        return 0
-
-
-async def get_user_score_for_period(user_id: str, start_iso: str, end_iso: str) -> int:
-    """Get user's LedoScore for a specific period, excluding LedoBonus."""
-    try:
-        sb = get_supabase()
-        result = (
-            sb.table("scores")
-            .select("points,reason,created_at")
-            .eq("user_id", user_id)
-            .gte("created_at", start_iso)
-            .lt("created_at", end_iso)
-            .execute()
-        )
-
-        if result.data:
-            return sum(
-                int(record.get("points") or 0)
-                for record in result.data
-                if not str(record.get("reason") or "").startswith("LedoBonus ")
-            )
-        return 0
-    except Exception as e:
-        logger.error(f"Error getting score for period {user_id} {start_iso}..{end_iso}: {e}", exc_info=True)
         return 0
 
 
@@ -1346,7 +1342,7 @@ async def get_top_users_for_period(start_iso: str, end_iso: str, limit: int = 10
         ).data or []
         scores_rows = (
             sb.table("scores")
-            .select("user_id,points,created_at,reason")
+            .select("user_id,points,created_at")
             .gte("created_at", start_iso)
             .lt("created_at", end_iso)
             .execute()
@@ -1356,8 +1352,6 @@ async def get_top_users_for_period(start_iso: str, end_iso: str, limit: int = 10
         for row in scores_rows:
             user_id = row.get("user_id")
             if not user_id:
-                continue
-            if str(row.get("reason") or "").startswith("LedoBonus "):
                 continue
             totals[str(user_id)] = totals.get(str(user_id), 0) + int(row.get("points") or 0)
 

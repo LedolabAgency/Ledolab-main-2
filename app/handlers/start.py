@@ -8,7 +8,7 @@ from html import escape
 from zoneinfo import ZoneInfo
 
 from aiogram import F, Router, types
-from aiogram.filters import Command, CommandObject, CommandStart
+from aiogram.filters import CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
 
 from app import cache, database
@@ -18,7 +18,6 @@ from app.keyboards.inline.start import (
     back_to_group_keyboard,
     club_main_menu,
     day_start_keyboard,
-    referral_actions_keyboard,
     day_task_next_keyboard,
     day_task_review_keyboard,
     goal_day_step_keyboard,
@@ -29,9 +28,7 @@ from app.keyboards.inline.start import (
     private_hub_reply_keyboard,
     quiz_reply_keyboard,
 )
-from app.services import referral_service, report_service
-from app.services import mention_service
-from app.states.quiz import GoalStates, ReportStates, TaskStates
+from app.states.quiz import GoalStates, TaskStates
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -101,8 +98,6 @@ async def _show_day_closed_message(target: types.Message | types.CallbackQuery) 
         "🔥 <b>День закрыт.</b>\n\n"
         "Отчет за этот день уже сдан, LedoScore зафиксирован.\n"
         "На сегодня все — выдохни, сохрани темп и возвращайся завтра за новым сильным днем 🚀",
-        inline_markup=back_to_group_keyboard(RETURN_GROUP_URL) if RETURN_GROUP_URL else None,
-        single_message=True,
     )
 
 
@@ -117,8 +112,6 @@ async def _show_saved_day_message(
         f"{tasks_text}\n\n"
         f"До {deadline_text.replace('до ', '')} сдай отчет за этот день.\n"
         "За отчет ты получишь LedoScore и поднимешься в рейтинге 👇",
-        inline_markup=back_to_group_keyboard(RETURN_GROUP_URL) if RETURN_GROUP_URL else None,
-        single_message=True,
     )
 
 
@@ -156,8 +149,6 @@ async def _show_task_prompt(
     await _answer_private_with_actions(
         target,
         prompts.get(task_number, "Напиши следующую задачу 👇"),
-        inline_markup=back_to_group_keyboard(RETURN_GROUP_URL) if RETURN_GROUP_URL else None,
-        single_message=True,
     )
 
 
@@ -173,73 +164,29 @@ async def _show_day_review(target: types.Message | types.CallbackQuery, tasks: l
     )
 
 
-async def _show_referral_invite(message: types.Message) -> None:
-    if not await database.has_completed_quiz(message.from_user.id):
-        await message.answer(
-            "🧭 Сначала пройди квиз. После него открою тебе клуб, день и рефералку 👇",
-            reply_markup=quiz_reply_keyboard(WEB_APP_URL),
-        )
-        return
+async def _show_goal_day_prompt(
+    target: types.Message | types.CallbackQuery,
+    state: FSMContext,
+    day_number: int,
+) -> None:
+    data = await state.get_data()
+    milestones = data.get("milestones", [])
+    is_editing = len(milestones) >= day_number
 
-    text, share_url = await referral_service.build_referral_invite(message.bot, message.from_user)
+    await state.update_data(editing_day=day_number)
+    await state.set_state(GoalStates.editing_day if is_editing else GoalStates.waiting_day_text)
+
+    prompts = {
+        1: "📍 <b>День 1</b>\n\nНапиши главный фокус на первый день.\nЭто не список из 10 дел, а один сильный вектор, который реально запускает движение.",
+        2: "📍 <b>День 2</b>\n\nОтлично, первый шаг есть.\nТеперь напиши фокус на второй день — что должно быть сделано, чтобы движение продолжилось?",
+        3: "📍 <b>День 3</b>\n\nХорошо идем 🔥\nСейчас нужен главный фокус на третий день.",
+        4: "📍 <b>День 4</b>\n\nУже появляется настоящий маршрут, а не просто желание.\nНапиши цель на четвертый день 👇",
+        5: "📍 <b>День 5</b>\n\nСупер. Чем яснее маршрут, тем легче реально дойти до результата.\nНапиши фокус на пятый день.",
+    }
+
     await _answer_private_with_actions(
-        message,
-        text,
-        inline_markup=referral_actions_keyboard(share_url, RETURN_GROUP_URL),
-        inline_text="",
-        single_message=True,
-    )
-
-
-async def _start_report_flow(message: types.Message, state: FSMContext) -> None:
-    if not await database.has_completed_quiz(message.from_user.id):
-        await message.answer(
-            "🧭 Сначала пройди квиз — после него откроются рабочие сценарии и отчет 👇",
-            reply_markup=quiz_reply_keyboard(WEB_APP_URL),
-        )
-        return
-
-    user = await database.ensure_club_user(
-        telegram_id=message.from_user.id,
-        username=message.from_user.username,
-        first_name=message.from_user.first_name,
-        language_code=message.from_user.language_code or "ru",
-    )
-    if not user:
-        await message.answer("❌ Не удалось подготовить твой профиль. Попробуй еще раз чуть позже.")
-        return
-
-    report_date = _club_day_date()
-    tasks = await database.get_today_tasks(user["id"], report_date)
-    if not tasks:
-        await _answer_private_with_actions(
-            message,
-            "📭 На этот день у тебя пока нет зафиксированных задач.\n\n"
-            "Сначала собери `📌 Мой день (до 3х задач)`, а потом возвращайся к отчету.",
-            inline_markup=back_to_group_keyboard(RETURN_GROUP_URL) if RETURN_GROUP_URL else None,
-            single_message=True,
-        )
-        return
-
-    existing_report = await database.get_daily_report(user["id"], report_date)
-    if existing_report and str(existing_report.get("status") or "").lower() not in {"redo_requested", "rejected"}:
-        await _show_day_closed_message(message)
-        return
-
-    task_texts = [str(task.get("task_text") or "").strip() for task in tasks[:3] if str(task.get("task_text") or "").strip()]
-    await state.clear()
-    await state.set_state(ReportStates.waiting_proof)
-    await state.update_data(
-        report_user_id=user["id"],
-        report_date=report_date,
-        report_tasks=task_texts,
-        report_file_id=None,
-    )
-    await _answer_private_with_actions(
-        message,
-        report_service.report_intro_text(task_texts),
-        inline_markup=back_to_group_keyboard(RETURN_GROUP_URL) if RETURN_GROUP_URL else None,
-        single_message=True,
+        target,
+        prompts.get(day_number, "Напиши фокус дня 👇"),
     )
 
 
@@ -275,7 +222,7 @@ async def _answer_private_with_actions(
         text,
         reply_markup=private_hub_reply_keyboard() if chat.type == "private" else None,
     )
-    if inline_markup and inline_text.strip():
+    if inline_markup:
         await sent.answer(inline_text, reply_markup=inline_markup)
 
 
@@ -331,8 +278,8 @@ async def _start_goal_flow(message: types.Message, state: FSMContext) -> None:
             "Это не ошибка, а часть дисциплины клуба.\n"
             "Мы специально не даем менять большую цель каждый день, чтобы ты не сбивал себе фокус.\n\n"
             "Если готов приступить уже сегодня — жми кнопку ниже 👇",
-            inline_markup=after_goal_confirm_keyboard(me.username, RETURN_GROUP_URL),
-            single_message=True,
+            inline_markup=after_goal_confirm_keyboard(me.username, CLUB_GROUP_URL),
+            inline_text="Если хочешь — можешь сразу перейти к сборке дня или вернуться в группу 👇",
         )
         return
 
@@ -349,8 +296,8 @@ async def _start_goal_flow(message: types.Message, state: FSMContext) -> None:
         "Не усложняй и не пиши все сразу.\n"
         "Сейчас нужен только один понятный ориентир, к которому ты реально хочешь прийти 🔥\n\n"
         "Напиши свою <b>цель на 30 дней</b> 👇",
-        inline_markup=back_to_group_keyboard(RETURN_GROUP_URL) if RETURN_GROUP_URL else None,
-        single_message=True,
+        inline_markup=back_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
+        inline_text="Если хочешь вернуться в группу — вот быстрый переход 👇",
     )
 
 
@@ -475,31 +422,17 @@ async def cmd_start(
             await _start_day_flow(message, state)
             return
 
-        if args == "report_setup" and state:
-            await _start_report_flow(message, state)
-            return
-
-        if args == "details_setup":
-            await _answer_private_with_actions(
-                message,
-                "📋 Все твои рабочие детали уже здесь.\n\n"
-                "Используй кнопки ниже, чтобы открыть цель, план или день 👇",
-                inline_markup=None,
-            )
-            return
-
-        if args == "ref_setup":
-            await _show_referral_invite(message)
-            return
-
         has_quiz = await database.has_completed_quiz(user_id)
         if has_quiz:
-            await message.answer(
+            me = await message.bot.get_me()
+            await _answer_private_with_actions(
+                message,
                 "🔥 <b>Ты уже внутри LedoLab Business Club.</b>\n\n"
                 "Если готов продолжать движение — открывай меню и работай по шагам.\n"
                 "Если нужен большой маршрут — начни с цели на 30 дней.\n"
                 "Если нужен конкретный фокус на сегодня — переходи в день.",
-                reply_markup=back_to_group_keyboard(RETURN_GROUP_URL) if RETURN_GROUP_URL else None,
+                inline_markup=club_main_menu(me.username),
+                inline_text="Ниже у тебя теперь есть быстрые кнопки-напоминания.\nА если нужен старый inline-вариант меню — он тоже под рукой 👇",
             )
             return
 
@@ -544,11 +477,12 @@ async def show_30_day_goal(message: types.Message) -> None:
         "🎯 <b>Твоя цель на 30 дней</b>\n\n"
         f"{active_goal.get('goal_text', '')}\n\n"
         "Держи ее перед глазами и не распыляйся. Большой результат всегда начинается с ясного фокуса 🔥",
-        inline_markup=back_to_group_keyboard(RETURN_GROUP_URL) if RETURN_GROUP_URL else None,
-        single_message=True,
+        inline_markup=back_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
+        inline_text="Вернуться в группу можно здесь 👇",
     )
 
 
+@router.message(F.text == "📅 Мой план на 5 дней")
 @router.message(F.text == "📅 Мой план на 5 дней")
 async def show_7_day_plan(message: types.Message) -> None:
     """Show the saved weekly plan as a reminder."""
@@ -587,8 +521,8 @@ async def show_7_day_plan(message: types.Message) -> None:
     await _answer_private_with_actions(
         message,
         "\n".join(lines),
-        inline_markup=back_to_group_keyboard(RETURN_GROUP_URL) if RETURN_GROUP_URL else None,
-        single_message=True,
+        inline_markup=back_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
+        inline_text="Вернуться в группу можно здесь 👇",
     )
 
 
@@ -805,8 +739,6 @@ async def start_next_route_flow(query: types.CallbackQuery, state: FSMContext) -
         single_message=True,
     )
     await query.answer("Собираем новый маршрут 🚀")
-
-
 @router.callback_query(TaskStates.waiting_task_text, F.data == "day_go")
 async def start_day_task_collection(query: types.CallbackQuery, state: FSMContext) -> None:
     await state.update_data(day_task_step=1, day_tasks=[])
@@ -823,8 +755,8 @@ async def postpone_day_to_tomorrow(query: types.CallbackQuery, state: FSMContext
         "Хорошо.\n\n"
         "Сегодня не насилуем себя фальшивой продуктивностью.\n"
         "Отдохни, а завтра вернись и собери новый день с ясной головой ✨",
-        inline_markup=back_to_group_keyboard(RETURN_GROUP_URL) if RETURN_GROUP_URL else None,
-        single_message=True,
+        inline_markup=back_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
+        inline_text="Вернуться в группу можно здесь 👇",
     )
     await query.answer()
 
@@ -930,36 +862,6 @@ async def confirm_day_tasks(query: types.CallbackQuery, state: FSMContext) -> No
         ex=cache.seconds_until_next_22(),
     )
 
-    target_group_id = REPORTS_GROUP_ID
-    if not target_group_id:
-        last_group_chat = await cache.get_data(f"last_group_chat:{query.from_user.id}")
-        target_group_id = int(last_group_chat) if last_group_chat else None
-
-    if target_group_id:
-        user_label = mention_service.build_user_mention(
-            telegram_id=query.from_user.id,
-            username=club_user.get("username"),
-            first_name=club_user.get("first_name") or query.from_user.first_name,
-            fallback="Участник",
-        )
-        day_summary = [
-            f"📌 {user_label} зафиксировал свой день",
-            "",
-            "Задачи на этот день:",
-        ]
-        for idx, task in enumerate(tasks, 1):
-            day_summary.append(f"{idx}. {escape(task)}")
-        day_summary.extend(
-            [
-                "",
-                "Вечером до 22:00 нужно сдать отчет и зафиксировать LedoScore 🔥",
-            ]
-        )
-        try:
-            await query.bot.send_message(target_group_id, "\n".join(day_summary))
-        except Exception as exc:
-            logger.warning("Failed to post day plan to group | user=%s error=%s", query.from_user.id, exc)
-
     await state.clear()
     await _show_saved_day_message(
         query,
@@ -981,7 +883,17 @@ async def handle_day_flow_back(query: types.CallbackQuery, state: FSMContext) ->
 
     if current_state == TaskStates.waiting_task_text.state:
         await _show_day_intro(query, week_hint, _club_day_deadline_text(), path_day_number)
-        await query.answer()
+        await query.answer("↩️ Шаг назад")
+        return
+
+    if current_state == GoalStates.waiting_day_text.state:
+        data = await state.get_data()
+        milestones = list(data.get("milestones") or [])
+        if not milestones:
+            await _show_day_intro(query, week_hint, _club_day_deadline_text(), path_day_number)
+        else:
+            await _show_goal_day_prompt(query, state, len(milestones))
+        await query.answer("↩️ Шаг назад")
         return
 
     if current_state == TaskStates.collecting_day_tasks.state:
@@ -990,7 +902,7 @@ async def handle_day_flow_back(query: types.CallbackQuery, state: FSMContext) ->
         next_step = max(len(tasks) + 1, 1)
         await state.update_data(day_tasks=tasks, day_task_step=next_step)
         await _show_task_prompt(query, next_step)
-        await query.answer()
+        await query.answer("↩️ Шаг назад")
         return
 
     if current_state == TaskStates.reviewing_day_tasks.state:
@@ -1000,10 +912,10 @@ async def handle_day_flow_back(query: types.CallbackQuery, state: FSMContext) ->
         await state.update_data(day_tasks=tasks, day_task_step=next_step)
         await state.set_state(TaskStates.collecting_day_tasks)
         await _show_task_prompt(query, next_step)
-        await query.answer()
+        await query.answer("↩️ Шаг назад")
         return
 
-    await query.answer()
+    await query.answer("↩️ Шаг назад")
 
 
 @router.message(GoalStates.waiting_goal_text)
@@ -1020,7 +932,7 @@ async def handle_goal_text(message: types.Message, state: FSMContext) -> None:
         message,
         "🔥 <b>Отлично. Большую цель зафиксировали.</b>\n\n"
         "Теперь не пытаемся расписать весь месяц сразу.\n"
-        "Сейчас собираем <b>5 ближайших дней</b> — это не мелкие таски, а понятные дневные фокусы.\n\n"
+            "Сейчас собираем <b>5 ближайших дней</b> — это не мелкие таски, а понятные дневные фокусы.\n\n"
         "Нажми кнопку ниже, и мы спокойно начнем с первого дня 👇",
         inline_markup=goal_day_step_keyboard(1),
     )
@@ -1031,28 +943,8 @@ async def handle_goal_text(message: types.Message, state: FSMContext) -> None:
 async def open_goal_day_step(query: types.CallbackQuery, state: FSMContext) -> None:
     """Open a specific 5-day milestone step."""
     day_number = int(query.data.split(":")[1])
-    data = await state.get_data()
-    milestones = data.get("milestones", [])
-    is_editing = len(milestones) >= day_number
-
-    await state.update_data(editing_day=day_number)
-    await state.set_state(GoalStates.editing_day if is_editing else GoalStates.waiting_day_text)
-
-    prompts = {
-        1: "📍 <b>День 1</b>\n\nНапиши главный фокус на первый день.\nЭто не список из 10 дел, а один сильный вектор, который реально запускает движение.",
-        2: "📍 <b>День 2</b>\n\nОтлично, первый шаг есть.\nТеперь напиши фокус на второй день — что должно быть сделано, чтобы движение продолжилось?",
-        3: "📍 <b>День 3</b>\n\nХорошо идем 🔥\nСейчас нужен главный фокус на третий день.",
-        4: "📍 <b>День 4</b>\n\nУже появляется настоящий маршрут, а не просто желание.\nНапиши цель на четвертый день 👇",
-        5: "📍 <b>День 5</b>\n\nСупер. Чем яснее маршрут, тем легче реально дойти до результата.\nНапиши фокус на пятый день.",
-        
-    }
-    await _answer_private_with_actions(
-        query,
-        prompts.get(day_number, "Напиши фокус дня 👇"),
-        inline_markup=back_to_group_keyboard(RETURN_GROUP_URL) if RETURN_GROUP_URL else None,
-        single_message=True,
-    )
-    await query.answer()
+    await _show_goal_day_prompt(query, state, day_number)
+    await query.answer("↩️ Шаг назад")
 
 
 @router.message(GoalStates.waiting_day_text)
@@ -1199,7 +1091,7 @@ async def confirm_goal_flow(query: types.CallbackQuery, state: FSMContext) -> No
         await cache.set_data(
             cache.KeyManager.get_goal_day_lock_key(query.from_user.id, day_number),
             milestone,
-            ex=cache.seconds_until_next_sunday_21(),
+            ex=5 * 24 * 60 * 60,
         )
 
     if REPORTS_GROUP_ID:
@@ -1241,7 +1133,7 @@ async def confirm_goal_flow(query: types.CallbackQuery, state: FSMContext) -> No
         "Если готов уже <b>сегодня</b> начать выполнять поставленные цели — нажимай кнопку\n"
         "<b>📅 Мой день (до 3х задач)</b>.\n\n"
         "Если пока не готов — просто вернись в группу и продолжишь позже.",
-        inline_markup=after_goal_confirm_keyboard(me.username, RETURN_GROUP_URL),
+        inline_markup=after_goal_confirm_keyboard(me.username, CLUB_GROUP_URL),
     )
     await state.clear()
     await query.answer("Цели подтверждены ✅")
