@@ -28,7 +28,7 @@ from app.keyboards.inline.start import (
     private_hub_reply_keyboard,
     quiz_reply_keyboard,
 )
-from app.states.quiz import GoalStates, TaskStates
+from app.states.quiz import GoalStates, ReportStates, TaskStates
 
 logger = logging.getLogger(__name__)
 router = Router()
