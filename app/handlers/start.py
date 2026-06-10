@@ -663,7 +663,7 @@ async def send_daily_report(query: types.CallbackQuery, state: FSMContext) -> No
             "\n\n🏁 Путь на 5 дней закрыт.\n"
             "Если 30-дневный цикл уже закончился — дальше ставим новую большую цель."
         )
-    route_day_number = streak_day % 5 or 5 if streak_day > 0 else 1
+    route_day_number = ((streak_day - 1) % 5) + 1 if streak_day > 0 else 1
     await _answer_private_with_actions(
         query,
         "🔥 Отчет отправлен.\n\n"
