@@ -8,7 +8,7 @@ from html import escape
 from zoneinfo import ZoneInfo
 
 from aiogram import F, Router, types
-from aiogram.filters import CommandObject, CommandStart
+from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
 
 from app import cache, database
