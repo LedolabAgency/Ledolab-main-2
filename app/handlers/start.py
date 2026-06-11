@@ -13,7 +13,6 @@ from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
 
 from app import cache, database
-# Імпортуємо сервіси, які використовуються в коді (включаючи реферальний та меншени)
 from app.services import referral_service, report_service, mention_service
 from app.config import CLUB_GROUP_URL, GROUP_ENTRY_URL, REPORTS_GROUP_ID, WEB_APP_URL
 from app.keyboards.inline.start import (
@@ -101,7 +100,7 @@ async def _show_day_closed_message(target: types.Message | types.CallbackQuery) 
     await _answer_private_with_actions(
         target,
         "🔥 <b>День закрыт.</b>\n\n"
-        "Отчет за этот день уже сдан, LedoScore зафиксирован.\n"
+        "Отчет за этот day уже сдан, LedoScore зафиксирован.\n"
         "На сегодня все — выдохни, сохрани темп и возвращайся завтра за новым сильным днем 🚀",
     )
 
@@ -113,9 +112,9 @@ async def _show_saved_day_message(
 ) -> None:
     await _answer_private_with_actions(
         target,
-        "📌 <b>Твой день уже зафиксирован:</b>\n\n"
+        "📌 <b>Твой day уже зафиксирован:</b>\n\n"
         f"{tasks_text}\n\n"
-        f"До {deadline_text.replace('до ', '')} сдай отчет за этот день.\n"
+        f"До {deadline_text.replace('до ', '')} сдай отчет за этот day.\n"
         "За отчет ты получишь LedoScore и поднимешься в рейтинге 👇",
     )
 
@@ -130,9 +129,9 @@ async def _show_day_intro(
     await _answer_private_with_actions(
         target,
         "Отлично 🔥\n\n"
-        "Теперь твоя задача — разложить этот день на конкретные действия.\n\n"
+        "Теперь твоя задача — разложить этот day на конкретные действия.\n\n"
         "Важно:\n"
-        f"задачи на этот день действуют {deadline_text}.\n"
+        f"задачи на этот day действуют {deadline_text}.\n"
         "Именно по ним вечером ты будешь сдавать отчет.\n\n"
         f"{path_line}"
         f"Сегодняшний фокус из твоего 5-дневного маршрута:\n📍 <i>{escape(week_hint)}</i>\n\n"
@@ -147,9 +146,9 @@ async def _show_task_prompt(
     task_number: int,
 ) -> None:
     prompts = {
-        1: "Напиши задачу №1 на этот день.\n\nОдна задача = одно конкретное действие, которое можно либо сделать, либо не сделать.",
-        2: "Теперь напиши задачу №2.\n\nЕсли одной сильной задачи на день достаточно — потом сможешь нажать «Пропустить».",
-        3: "Теперь напиши задачу №3.\n\nЛучший темп и максимальный LedoScore обычно собираются, когда день честно разложен на 3 понятные задачи.",
+        1: "Напиши задачу №1 на этот day.\n\nОдна задача = одно конкретное действие, которое можно либо сделать, либо не сделать.",
+        2: "Теперь напиши задачу №2.\n\nЕсли одной сильной задачи на day достаточно — потом сможешь нажать «Пропустить».",
+        3: "Теперь напиши задачу №3.\n\nЛучший темп и максимальный LedoScore обычно собираются, когда day честно разложен на 3 понятные задачи.",
     }
     await _answer_private_with_actions(
         target,
@@ -161,9 +160,9 @@ async def _show_day_review(target: types.Message | types.CallbackQuery, tasks: l
     tasks_text = "\n".join(f"{idx}. {escape(str(task))}" for idx, task in enumerate(tasks, 1))
     await _answer_private_with_actions(
         target,
-        "🧠 <b>Проверь задачи на день:</b>\n\n"
+        "🧠 <b>Проверь задачи на day:</b>\n\n"
         f"{tasks_text}\n\n"
-        "Если все ок — подтверждай.\nЕсли хочешь собрать день заново — жми изменить.",
+        "Если все ок — подтверждай.\nЕсли хочешь собрать day заново — жми изменить.",
         inline_markup=day_task_review_keyboard(),
         inline_text="Выбери, что делать дальше 👇",
     )
@@ -182,11 +181,11 @@ async def _show_goal_day_prompt(
     await state.set_state(GoalStates.editing_day if is_editing else GoalStates.waiting_day_text)
 
     prompts = {
-        1: "📍 <b>День 1</b>\n\nНапиши главный фокус на первый день.\nЭто не список из 10 дел, а один сильный вектор, который реально запускает движение.",
-        2: "📍 <b>День 2</b>\n\nОтлично, первый шаг есть.\nТеперь напиши фокус на второй день — что должно быть сделано, чтобы движение продолжилось?",
-        3: "📍 <b>День 3</b>\n\nХорошо идем 🔥\nСейчас нужен главный фокус на третий день.",
-        4: "📍 <b>День 4</b>\n\nУже появляется настоящий маршрут, а не просто желание.\nНапиши цель на четвертый день 👇",
-        5: "📍 <b>День 5</b>\n\nСупер. Чем яснее маршрут, тем легче реально дойти до результата.\nНапиши фокус на пятый день.",
+        1: "📍 <b>День 1</b>\n\nНапиши главный фокус на первый day.\nЭто не список из 10 дел, а один сильный вектор, который реально запускает движение.",
+        2: "📍 <b>День 2</b>\n\nОтлично, первый шаг есть.\nТеперь напиши фокус на второй day — что должно быть сделано, чтобы движение продолжилось?",
+        3: "📍 <b>День 3</b>\n\nХорошо идем 🔥\nСейчас нужен главный фокус на третий day.",
+        4: "📍 <b>День 4</b>\n\nУже появляется настоящий маршрут, а не просто желание.\nНапиши цель на четвертый day 👇",
+        5: "📍 <b>День 5</b>\n\nСупер. Чем яснее маршрут, тем легче реально дойти до результата.\nНапиши фокус на пятый day.",
     }
 
     await _answer_private_with_actions(
@@ -208,7 +207,7 @@ async def _send_quiz_intro(message: types.Message) -> None:
     caption = (
         "🚀 <b>LedoLab Business Club</b>\n\n"
         "Это не чат мотивации и не очередная папка с советами.\n"
-        "Это среда, где предприниматели каждый день показывают реальное действие.\n\n"
+        "Это среда, где предприниматели каждый day показывают реальное действие.\n\n"
         "Сначала пройди короткий квиз.\n"
         "Он поможет нам понять твой уровень и точнее провести тебя дальше 👇"
     )
@@ -229,7 +228,7 @@ async def _send_quiz_intro(message: types.Message) -> None:
 async def _send_goal_route_intro(target: types.Message | types.CallbackQuery, goal_text: str) -> None:
     caption = (
         "🎯 <b>Твой маршрут на 5 дней</b>\n\n"
-        "Большая цель остается прежней, а теперь мы соберем ближайшие шаги так, чтобы день было легко закрывать.\n\n"
+        "Большая цель остается прежней, а теперь мы соберем ближайшие шаги так, чтобы day было легко закрывать.\n\n"
         f"🎯 <i>{escape(goal_text)}</i>\n\n"
         "Нажми кнопку ниже и начнем с первого дня 👇"
     )
@@ -294,7 +293,7 @@ def _build_goal_review(goal_text: str, milestones: list[str]) -> str:
         [
             "",
             "Если все выглядит правильно — жми <b>УТВЕРДИТЬ ЦЕЛИ</b> ✅",
-            "Если хочешь поправить конкретный день — жми <b>ИЗМЕНИТЬ ЦЕЛИ</b> ✏️",
+            "Если хочешь поправить конкретный day — жми <b>ИЗМЕНИТЬ ЦЕЛИ</b> ✏️",
         ]
     )
     return "\n".join(lines)
@@ -330,7 +329,7 @@ async def _start_goal_flow(message: types.Message, state: FSMContext) -> None:
             message,
             "🔒 <b>Твоя цель на 30 дней уже зафиксирована.</b>\n\n"
             "Это не ошибка, а часть дисциплины клуба.\n"
-            "Мы специально не даем менять большую цель каждый день, чтобы ты не сбивал себе фокус.\n\n"
+            "Мы специально не даем менять большую цель каждый day, чтобы ты не сбивал себе фокус.\n\n"
             "Если готов приступить уже сегодня — жми кнопку ниже 👇",
             inline_markup=after_goal_confirm_keyboard(me.username, CLUB_GROUP_URL),
             inline_text="Если хочешь — можете сразу перейти к сборке дня или вернуться в группу 👇",
@@ -346,7 +345,7 @@ async def _start_goal_flow(message: types.Message, state: FSMContext) -> None:
         "Как это работает:\n"
         "1. Ты ставишь <b>1 главную цель</b> на месяц\n"
         "2. Потом разбиваешь ее на <b>5 ближайших дней</b>\n"
-        "3. А уже после этого превращаешь каждый день в <b>до 3 конкретных задач</b>\n\n"
+        "3. А уже после этого превращаешь каждый day в <b>до 3 конкретных задач</b>\n\n"
         "Не усложняй и не пиши все сразу.\n"
         "Сейчас нужен только один понятный ориентир, к которому ты реально хочешь прийти 🔥\n\n"
         "Напиши свою <b>цель на 30 дней</b> 👇",
@@ -378,7 +377,7 @@ async def _start_day_flow(message: types.Message, state: FSMContext) -> None:
     if not active_goal:
         await message.answer(
             "🎯 Сначала зафиксируй большую цель на 30 дней.\n\n"
-            "Без нее мы не сможем собрать сильный день, который реально двигает тебя вперед."
+            "Без нее мы не сможем собрать сильный day, который реально двигает тебя вперед."
         )
         return
 
@@ -497,7 +496,7 @@ async def cmd_start(
                 "Если готов продолжать движение — открывай меню и работай по шагам.\n"
                 "Если нужен большой маршрут — начни с цели на 30 дней.\n"
                 "Если нужен конкретный фокус на сегодня — переходи в день.",
-                inline_markup=club_main_menu(me.username),
+                inline_markup=club_main_menu(me.username, group_url="https://t.me/ledolab"),
                 inline_text="Ниже у тебя теперь есть быстрые кнопки-напоминания.\nА если нужен старый inline-вариант меню — он тоже под рукой 👇",
             )
             return
@@ -654,7 +653,7 @@ async def send_daily_report(query: types.CallbackQuery, state: FSMContext) -> No
         return
 
     entries = [{
-        "task_text": "Общий отчет за день",
+        "task_text": "Общий отчет за day",
         "task_lines": task_texts,
         "proof_type": "video_note",
         "file_id": report_file_id,
@@ -705,7 +704,7 @@ async def send_daily_report(query: types.CallbackQuery, state: FSMContext) -> No
     route_completed = streak_day > 0 and streak_day % 5 == 0
     active_goal = await database.get_active_goal(report_user_id) if route_completed else None
     bonus_line = (
-        f"+{bonus_awarded} LedoBonus за день {streak_day} из 5.\n"
+        f"+{bonus_awarded} LedoBonus за day {streak_day} из 5.\n"
         if bonus_awarded > 0 and streak_day > 0
         else ""
     )
@@ -808,7 +807,7 @@ async def postpone_day_to_tomorrow(query: types.CallbackQuery, state: FSMContext
         query,
         "Хорошо.\n\n"
         "Сегодня не насилуем себя фальшивой продуктивностью.\n"
-        "Отдохни, а завтра вернись и собери новый день с ясной головой ✨",
+        "Отдохни, а завтра вернись и собери новый day с ясной головой ✨",
         inline_markup=back_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
         inline_text="Вернуться в группу можно здесь 👇",
     )
@@ -844,10 +843,10 @@ async def collect_day_task_text(message: types.Message, state: FSMContext) -> No
         message,
         "⚠️ <b>Важно:</b>\n\n"
         "Здесь решает не количество задач, а дисциплина.\n"
-        "📅 Каждый день у тебя есть до 3 задач — это твой фокус\n"
+        "📅 Каждый day у тебя есть до 3 задач — это твой фокус\n"
         "🎯 Но баллы ты получаешь не за задачи, а за отчёт\n\n"
         "📤 Сдал отчёт → получил баллы\n"
-        "🚫 Не сдал → день не засчитан\n\n"
+        "🚫 Не сдал → day не засчитан\n\n"
         "❌ Не выдумывай задачи ради галочки\n"
         "✔️ Делай реальные вещи и честно отчитывайся\n\n"
         "📈 Важно только одно: ты идёшь к своей цели или нет\n\n"
@@ -922,7 +921,7 @@ async def confirm_day_tasks(query: types.CallbackQuery, state: FSMContext) -> No
         "\n".join(f"{idx}. {escape(str(task))}" for idx, task in enumerate(tasks, 1)),
         _club_day_deadline_text(),
     )
-    await query.answer("Задачи на день зафиксированы ✅")
+    await query.answer("Задачи на day зафиксированы ✅")
 
 
 @router.callback_query(TaskStates.waiting_task_text, F.data == "flow_back")
@@ -932,7 +931,7 @@ async def handle_day_flow_back(query: types.CallbackQuery, state: FSMContext) ->
     data = await state.get_data()
     current_state = await state.get_state()
     tasks = list(data.get("day_tasks") or [])
-    week_hint = str(data.get("day_week_hint") or "собери сильный день без перегруза")
+    week_hint = str(data.get("day_week_hint") or "собери сильный day без перегруза")
     path_day_number = int(data.get("day_path_number") or 1)
 
     if current_state == TaskStates.waiting_task_text.state:
@@ -1025,7 +1024,7 @@ async def save_goal_day_text(message: types.Message, state: FSMContext) -> None:
         await state.set_state(GoalStates.waiting_day_text)
         await _answer_private_with_actions(
             message,
-            f"✅ <b>{day_number}-й день сохранен.</b>\n\n"
+            f"✅ <b>{day_number}-й day сохранен.</b>\n\n"
             "Идем дальше спокойно, шаг за шагом 👇",
             inline_markup=goal_day_step_keyboard(day_number + 1),
         )
@@ -1052,7 +1051,7 @@ async def edit_goal_days(query: types.CallbackQuery, state: FSMContext) -> None:
     """Open selective editing for one of the 5 days."""
     await _answer_private_with_actions(
         query,
-        "✏️ Выбери день, который хочешь поправить.\n\n"
+        "✏️ Выбери day, который хочешь поправить.\n\n"
         "Тебе не нужно переписывать все заново — можно изменить только то, что реально хочется улучшить 👇",
         inline_markup=goal_edit_days_keyboard(),
     )
@@ -1127,7 +1126,7 @@ async def confirm_goal_flow(query: types.CallbackQuery, state: FSMContext) -> No
             query,
             "✅ <b>Новый 5-дневный маршрут зафиксирован.</b>\n\n"
             "30-дневная цель остается прежней, но ближайшие 5 дней теперь свежие и понятные.\n\n"
-            "Когда будешь готов собрать сегодняшний день — жми кнопку ниже.",
+            "Когда будешь готов собрать сегодняшний day — жми кнопку ниже.",
             inline_markup=after_goal_confirm_keyboard(me.username, RETURN_GROUP_URL),
             single_message=True,
         )
@@ -1183,9 +1182,9 @@ async def confirm_goal_flow(query: types.CallbackQuery, state: FSMContext) -> No
     await _answer_private_with_actions(
         query,
         "🚀 <b>Готово. Твоя большая цель и 5-дневный маршрут зафиксированы.</b>\n\n"
-        "Теперь у тебя есть не просто желание, а понятный план движения.\n\n"
+        "Now у тебя есть не просто желание, а понятный план движения.\n\n"
         "Если готов уже <b>сегодня</b> начать выполнять поставленные цели — нажимай кнопку\n"
-        "<b>📅 Мой день (до 3х задач)</b>.\n\n"
+        "<b>📅 Мой day (до 3х задач)</b>.\n\n"
         "Если пока не готов — просто вернись в группу и продолжишь позже.",
         inline_markup=after_goal_confirm_keyboard(me.username, CLUB_GROUP_URL),
     )
