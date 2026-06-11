@@ -176,9 +176,15 @@ async def send_evening_checkup(bot: Bot, now: datetime | None = None) -> None:
             first_name=user.get("first_name"),
             fallback="Участник",
         )
+        telegram_id = int(user.get("telegram_id") or 0)
+        path_day_number = int((await cache.get_data(cache.KeyManager.get_streak_key(telegram_id))) or 0)
+        path_day_number = ((path_day_number - 1) % 5) + 1 if path_day_number > 0 else 0
+        bonus_points = max(int(user.get("total_score", 0)) - max(int(user.get("base_score", 0) or 0), 0), 0)
         medal_lines.extend(
             [
                 f"{medals[idx - 1]} {user_label} — {int(user.get('total_score', 0))} LedoScore",
+                f"   📈 Путь: {path_day_number}/5" if path_day_number else "   📈 Путь: еще не начат",
+                f"   ✨ LedoBonus: +{bonus_points}",
             ]
         )
     top_block = "\n".join(medal_lines)
