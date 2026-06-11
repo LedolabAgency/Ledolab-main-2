@@ -185,6 +185,7 @@ async def send_evening_checkup(bot: Bot, now: datetime | None = None) -> None:
             if top_block
             else "🏆 Пока топ не сформирован, но вечер уже зовет закрывать день сильным финишем."
         )
+        + "\n\n📈 Твой путь сегодня: не теряй темп и закрой день сильным отчетом."
     )
     await bot.send_message(REPORTS_GROUP_ID, text)
 
