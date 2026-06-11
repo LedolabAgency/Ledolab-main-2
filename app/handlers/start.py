@@ -36,6 +36,7 @@ router = Router()
 RETURN_GROUP_URL = GROUP_ENTRY_URL or CLUB_GROUP_URL
 KYIV_TZ = ZoneInfo("Europe/Kiev")
 QUIZ_INTRO_IMAGE = Path(__file__).resolve().parents[2] / "assets" / "quiz_intro.png"
+GOAL_ROUTE_IMAGE = Path(__file__).resolve().parents[2] / "assets" / "goal_30_days_flow.png"
 
 
 def _club_now() -> datetime:
@@ -221,6 +222,33 @@ async def _send_quiz_intro(message: types.Message) -> None:
             logger.warning("Failed to send quiz intro image: %s", exc)
 
     await message.answer(caption, reply_markup=quiz_reply_keyboard(WEB_APP_URL))
+
+
+async def _send_goal_route_intro(target: types.Message | types.CallbackQuery, goal_text: str) -> None:
+    caption = (
+        "🎯 <b>Твой маршрут на 5 дней</b>\n\n"
+        "Большая цель остается прежней, а теперь мы соберем ближайшие шаги так, чтобы день было легко закрывать.\n\n"
+        f"🎯 <i>{escape(goal_text)}</i>\n\n"
+        "Нажми кнопку ниже и начнем с первого дня 👇"
+    )
+
+    if isinstance(target, types.CallbackQuery):
+        sender = target.message
+    else:
+        sender = target
+
+    if GOAL_ROUTE_IMAGE.exists():
+        try:
+            await sender.answer_photo(
+                photo=types.FSInputFile(str(GOAL_ROUTE_IMAGE)),
+                caption=caption,
+                reply_markup=goal_day_step_keyboard(1),
+            )
+            return
+        except Exception as exc:
+            logger.warning("Failed to send goal route image: %s", exc)
+
+    await sender.answer(caption, reply_markup=goal_day_step_keyboard(1))
 
 
 async def _answer_private_with_actions(
@@ -747,16 +775,7 @@ async def start_next_route_flow(query: types.CallbackQuery, state: FSMContext) -
         editing_day=None,
         refresh_route=True,
     )
-    await _answer_private_with_actions(
-        query,
-        "🔥 <b>Собираем новый маршрут на 5 дней.</b>\n\n"
-        "Большая цель остается прежней:\n"
-        f"🎯 <i>{escape(goal_text)}</i>\n\n"
-        "Сейчас нужны 5 свежих фокусов, которые двинут тебя дальше.\n"
-        "Нажми кнопку ниже и начнем с первого дня 👇",
-        inline_markup=goal_day_step_keyboard(1),
-        single_message=True,
-    )
+    await _send_goal_route_intro(query, goal_text)
     await query.answer("Собираем новый маршрут 🚀")
 @router.callback_query(TaskStates.waiting_task_text, F.data == "day_go")
 async def start_day_task_collection(query: types.CallbackQuery, state: FSMContext) -> None:
