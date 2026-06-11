@@ -142,8 +142,8 @@ def goal_review_keyboard() -> types.InlineKeyboardMarkup:
     """Actions after the full 5-day plan is prepared."""
     return types.InlineKeyboardMarkup(
         inline_keyboard=[
-            [types.InlineKeyboardButton(text="✅ Утвердить план", callback_data="goal_confirm")],
-            [types.InlineKeyboardButton(text="✏️ Изменить план", callback_data="goal_edit")],
+            [types.InlineKeyboardButton(text="✅ Утвердить plan", callback_data="goal_confirm")],
+            [types.InlineKeyboardButton(text="✏️ Изменить plan", callback_data="goal_edit")],
             [types.InlineKeyboardButton(text="⬅️ Шаг назад", callback_data="flow_back")],
         ]
     )
@@ -257,13 +257,14 @@ def day_task_review_keyboard() -> types.InlineKeyboardMarkup:
     )
 
 
-def club_main_menu(bot_username: str | None = None) -> types.InlineKeyboardMarkup:
-    """Main working menu. In groups all buttons open the private bot."""
+def club_main_menu(bot_username: str | None = None, group_url: str | None = None) -> types.InlineKeyboardMarkup:
+    """Main working menu. Adds 'Заходи в группу 👥' button linking to the chat."""
     goal_button: types.InlineKeyboardButton
     day_button: types.InlineKeyboardButton
     report_button: types.InlineKeyboardButton
     rating_button: types.InlineKeyboardButton
     rules_button: types.InlineKeyboardButton
+    
     if bot_username:
         goal_button = types.InlineKeyboardButton(
             text="🎯 Моя цель (30 дней)",
@@ -282,19 +283,25 @@ def club_main_menu(bot_username: str | None = None) -> types.InlineKeyboardMarku
     else:
         goal_button = types.InlineKeyboardButton(text="🎯 Моя цель (30 дней)", callback_data="goal_view")
         day_button = types.InlineKeyboardButton(text="📅 Мой день (до 3х задач)", callback_data="day_view")
+        goal_button = types.InlineKeyboardButton(text="🎯 Моя цель (30 дней)", callback_data="goal_view")
+        day_button = types.InlineKeyboardButton(text="📅 Мой день (до 3х задач)", callback_data="day_view")
         report_button = types.InlineKeyboardButton(text="📤 Сдать отчет", callback_data="report_submit")
         rating_button = types.InlineKeyboardButton(text="🏆 Рейтинг", callback_data="rating_view")
         rules_button = types.InlineKeyboardButton(text="📘 Как работает клуб", callback_data="rules_view")
 
-    return types.InlineKeyboardMarkup(
-        inline_keyboard=[
-            [goal_button],
-            [day_button],
-            [report_button],
-            [rating_button],
-            [rules_button],
-        ]
-    )
+    buttons = [
+        [goal_button],
+        [day_button],
+        [report_button],
+        [rating_button],
+        [rules_button],
+    ]
+    
+    # Добавляем инлайн-кнопку "Заходи в группу" в самый конец меню, если передан url
+    if group_url:
+        buttons.append([types.InlineKeyboardButton(text="Заходи в группу 👥", url=group_url)])
+        
+    return types.InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 def report_count_keyboard() -> types.InlineKeyboardMarkup:
