@@ -21,6 +21,14 @@ def _is_reminder_window(now: datetime) -> bool:
     return now.hour == 20 and now.minute < 5
 
 
+def _is_midday_window(now: datetime) -> bool:
+    return now.hour == 12 and now.minute < 5
+
+
+def _is_day_window(now: datetime) -> bool:
+    return now.hour == 15 and now.minute < 5
+
+
 def _is_evening_window(now: datetime) -> bool:
     return now.hour == 21 and now.minute < 5
 
@@ -37,6 +45,18 @@ async def _tick(bot: Bot) -> None:
         if await cache.acquire_lock(reminder_key, ex=12 * 60 * 60):
             await community_service.send_report_deadline_reminder(bot, now)
             logger.info("Scheduled report reminder sent for %s", now.date().isoformat())
+
+    if _is_midday_window(now):
+        midday_key = f"job:midday_reminder:{now.date().isoformat()}"
+        if await cache.acquire_lock(midday_key, ex=12 * 60 * 60):
+            await community_service.send_midday_reminder(bot, now)
+            logger.info("Scheduled midday reminder sent for %s", now.date().isoformat())
+
+    if _is_day_window(now):
+        day_key = f"job:day_reminder:{now.date().isoformat()}"
+        if await cache.acquire_lock(day_key, ex=12 * 60 * 60):
+            await community_service.send_day_reminder(bot, now)
+            logger.info("Scheduled day reminder sent for %s", now.date().isoformat())
 
     if _is_evening_window(now):
         evening_key = f"job:evening_checkup:{now.date().isoformat()}"

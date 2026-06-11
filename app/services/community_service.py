@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import random
 from datetime import datetime, time, timedelta
 from html import escape
 from zoneinfo import ZoneInfo
@@ -15,6 +16,58 @@ logger = logging.getLogger(__name__)
 
 KYIV_TZ = ZoneInfo("Europe/Kiev")
 
+MIDDAY_REMINDER_PHRASES = [
+    "⏳ День уже раскрутился. Если еще не тронулся с места — сейчас лучший момент сделать первый сильный шаг.",
+    "🔥 Обед — не пауза, а точка перезапуска. Закрой одну важную вещь и не отпускай день в пустоту.",
+    "📌 Кто двигается в середине дня, тот вечером не догоняет — а уже закрепляет результат.",
+    "⚡ Полдень — время не думать, а фиксировать действие. Один честный шаг сегодня лучше десяти планов завтра.",
+    "🧭 Если фокус уже расползается, вернись в маршрут. Сейчас день еще легко можно выровнять.",
+    "💪 Середина дня — это не финиш, а контрольная точка. Покажи себе, что темп у тебя есть.",
+    "🚀 До вечера еще далеко, а значит, сегодня можно сделать больше, чем ты сам от себя ожидал.",
+    "🎯 Не жди идеального настроя. Закрой важное сейчас и забери себе спокойный вечер.",
+]
+
+DAY_REMINDER_PHRASES = [
+    "⚡ Время ускоряться. Если день еще не собран, сейчас самое подходящее окно его собрать.",
+    "📈 Днем выигрывает не тот, кто громче думает, а тот, кто быстрее делает.",
+    "🔥 Еще есть запас хода. Один хороший шаг сейчас может спасти весь день.",
+    "🛠️ Не отпускай ритм: чем раньше закрыта задача, тем сильнее ощущается контроль над днем.",
+    "💼 Бизнес любит движение. Сейчас хороший момент превратить намерение в действие.",
+    "🎯 Если день начал буксовать, не жди вечера — выправляй траекторию прямо сейчас.",
+    "🚀 Твой темп сегодня складывается из маленьких решений. Первое — сделать шаг в работу.",
+    "🧠 Не перегружай себя. Просто вернись к одному четкому действию и закрой его.",
+]
+
+DEADLINE_REMINDER_PHRASES = [
+    "⏰ До дедлайна отчета осталось 2 часа. Сейчас самое время зафиксировать результат и не потерять день.",
+    "🔥 Если отчет еще не сдан — у тебя еще есть окно, чтобы закрыть его красиво и без суеты.",
+    "📌 Вечером выигрывает дисциплина. До 22:00 сдай отчет и забери свой LedoScore.",
+    "🕗 День близится к финалу. Кто сдает отчет вовремя — тот держит ритм и растит рейтинг.",
+    "🚀 Еще есть шанс завершить день сильным действием. Не оставляй отчет на последний рывок.",
+    "💪 Один отчет сегодня может стоить больше, чем сотня обещаний завтра.",
+    "🏁 Финал близко. Закрой день честно, зафиксируй результат и двигайся дальше.",
+    "🎯 Не теряй вечер. Сейчас важнее не идеальность, а факт выполненного отчета.",
+]
+
+EVENING_REMINDER_PHRASES = [
+    "🌙 Вечерний чек-ап LedoLab: день уже показывает характер. Закрывай его в плюс.",
+    "🔥 У кого сегодня был результат — тот уже в игре. У кого тишина — еще есть шанс включиться.",
+    "📈 Вечер — момент, когда дисциплина становится видимой. Не прячь сегодняшний прогресс.",
+    "💼 Клуб живет не словами, а вечерними отчетами. Сейчас лучшее время это доказать.",
+    "🧠 Если день был неровный, вечер еще можно собрать. Один отчет способен все выровнять.",
+    "🚀 Кто закрывает день до 22:00, тот держит контроль над своим ритмом.",
+    "🎯 Вечером решает не эмоция, а зафиксированный результат. Не оставляй день пустым.",
+    "🏆 Сегодняшний темп формирует завтрашний рейтинг. Закрой день сильным финишем.",
+]
+
+
+def _pick_phrase(phrases: list[str], now: datetime) -> str:
+    if not phrases:
+        return ""
+    seed = f"{now.date().isoformat()}:{now.hour}:{now.minute}"
+    rng = random.Random(seed)
+    return rng.choice(phrases)
+
 
 def _week_window(now: datetime) -> tuple[datetime, datetime]:
     days_since_sunday = (now.weekday() + 1) % 7
@@ -23,6 +76,14 @@ def _week_window(now: datetime) -> tuple[datetime, datetime]:
     if now < week_start:
         week_start -= timedelta(days=7)
     return week_start, week_start + timedelta(days=7)
+
+
+def _is_active_report_window(now: datetime) -> bool:
+    week_start, week_end = _week_window(now)
+    if not (week_start <= now < week_end):
+        return False
+    elapsed_days = (now - week_start).days
+    return 0 <= elapsed_days < 5
 
 
 def _build_regular_welcome(display_name: str) -> str:
@@ -139,21 +200,53 @@ async def send_report_deadline_reminder(bot: Bot, now: datetime | None = None) -
         return
 
     now = now or datetime.now(KYIV_TZ)
-    week_start, week_end = _week_window(now)
-    if not (week_start <= now < week_end):
-        return
-
-    elapsed_days = (now - week_start).days
-    if not (0 <= elapsed_days < 5):
+    if not _is_active_report_window(now):
         return
 
     analytics = await database.get_admin_analytics(now.date().isoformat())
     missing_reports = max(int(analytics.get("missing_reports_today", 0)), 0)
+    intro = _pick_phrase(DEADLINE_REMINDER_PHRASES, now)
     text = (
-        "⏰ До дедлайна отчета осталось 2 часа.\n\n"
+        f"{intro}\n\n"
         f"Сегодня без отчета еще {missing_reports} участ.\n"
         "Кто двигается — тот фиксирует результат.\n"
         "До 22:00 закрой день, сдай отчет и забери свой LedoScore 🔥"
+    )
+    await bot.send_message(REPORTS_GROUP_ID, text)
+
+
+async def send_midday_reminder(bot: Bot, now: datetime | None = None) -> None:
+    if not REPORTS_GROUP_ID:
+        return
+
+    now = now or datetime.now(KYIV_TZ)
+    if not _is_active_report_window(now):
+        return
+    if now.hour != 12:
+        return
+
+    text = (
+        f"{_pick_phrase(MIDDAY_REMINDER_PHRASES, now)}\n\n"
+        "Если день уже начался — не отпускай его в хаос.\n"
+        "Сейчас хороший момент вернуть фокус и сделать один сильный шаг 🔥"
+    )
+    await bot.send_message(REPORTS_GROUP_ID, text)
+
+
+async def send_day_reminder(bot: Bot, now: datetime | None = None) -> None:
+    if not REPORTS_GROUP_ID:
+        return
+
+    now = now or datetime.now(KYIV_TZ)
+    if not _is_active_report_window(now):
+        return
+    if now.hour != 15:
+        return
+
+    text = (
+        f"{_pick_phrase(DAY_REMINDER_PHRASES, now)}\n\n"
+        "Если хочешь сильный вечер — собери его уже сейчас.\n"
+        "Один собранный шаг днем сильно меняет картину дня 🚀"
     )
     await bot.send_message(REPORTS_GROUP_ID, text)
 
@@ -163,6 +256,8 @@ async def send_evening_checkup(bot: Bot, now: datetime | None = None) -> None:
         return
 
     now = now or datetime.now(KYIV_TZ)
+    if not _is_active_report_window(now):
+        return
     if now.hour != 21:
         return
 
@@ -179,17 +274,16 @@ async def send_evening_checkup(bot: Bot, now: datetime | None = None) -> None:
         telegram_id = int(user.get("telegram_id") or 0)
         path_day_number = int((await cache.get_data(cache.KeyManager.get_streak_key(telegram_id))) or 0)
         path_day_number = ((path_day_number - 1) % 5) + 1 if path_day_number > 0 else 0
-        bonus_points = max(int(user.get("total_score", 0)) - max(int(user.get("base_score", 0) or 0), 0), 0)
         medal_lines.extend(
             [
                 f"{medals[idx - 1]} {user_label} — {int(user.get('total_score', 0))} LedoScore",
                 f"   📈 Путь: {path_day_number}/5" if path_day_number else "   📈 Путь: еще не начат",
-                f"   ✨ LedoBonus: +{bonus_points}",
             ]
         )
     top_block = "\n".join(medal_lines)
+    intro = _pick_phrase(EVENING_REMINDER_PHRASES, now)
     text = (
-        "🌙 Вечерний чек-ап LedoLab.\n\n"
+        f"{intro}\n\n"
         "До 22:00 еще можно закрыть день и зафиксировать LedoScore.\n"
         "Кто уже сдал отчет — держит темп. Кто еще в тишине — сейчас лучшее время не терять ритм 🔥\n\n"
         + (
