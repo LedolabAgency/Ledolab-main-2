@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import date, datetime, timedelta
 from html import escape
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from aiogram import F, Router, types
@@ -34,6 +35,7 @@ logger = logging.getLogger(__name__)
 router = Router()
 RETURN_GROUP_URL = GROUP_ENTRY_URL or CLUB_GROUP_URL
 KYIV_TZ = ZoneInfo("Europe/Kiev")
+QUIZ_INTRO_IMAGE = Path(__file__).resolve().parents[2] / "assets" / "quiz_intro.png"
 
 
 def _club_now() -> datetime:
@@ -197,6 +199,28 @@ async def _delete_private_message_safely(message: types.Message) -> None:
         await message.delete()
     except Exception as e:
         logger.debug("Failed to delete private message %s: %s", message.message_id, e)
+
+
+async def _send_quiz_intro(message: types.Message) -> None:
+    caption = (
+        "🚀 <b>LedoLab Business Club</b>\n\n"
+        "Это не чат мотивации и не очередная папка с советами.\n"
+        "Это среда, где предприниматели каждый день показывают реальное действие.\n\n"
+        "Сначала пройди короткий квиз.\n"
+        "Он поможет нам понять твой уровень и точнее провести тебя дальше 👇"
+    )
+    if QUIZ_INTRO_IMAGE.exists():
+        try:
+            await message.answer_photo(
+                photo=types.FSInputFile(str(QUIZ_INTRO_IMAGE)),
+                caption=caption,
+                reply_markup=quiz_reply_keyboard(WEB_APP_URL),
+            )
+            return
+        except Exception as exc:
+            logger.warning("Failed to send quiz intro image: %s", exc)
+
+    await message.answer(caption, reply_markup=quiz_reply_keyboard(WEB_APP_URL))
 
 
 async def _answer_private_with_actions(
@@ -436,14 +460,7 @@ async def cmd_start(
             )
             return
 
-        welcome_text = (
-            "🚀 <b>LedoLab Business Club</b>\n\n"
-            "Это не чат мотивации и не очередная папка с советами.\n"
-            "Это среда, где предприниматели каждый день показывают реальное действие.\n\n"
-            "Сначала пройди короткий квиз.\n"
-            "Он поможет нам понять твой уровень и точнее провести тебя дальше 👇"
-        )
-        await message.answer(welcome_text, reply_markup=quiz_reply_keyboard(WEB_APP_URL))
+        await _send_quiz_intro(message)
         logger.info(f"New user: {user_id}")
 
     except Exception as e:
