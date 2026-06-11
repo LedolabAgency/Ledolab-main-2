@@ -170,9 +170,15 @@ async def send_evening_checkup(bot: Bot, now: datetime | None = None) -> None:
     medal_lines = []
     medals = ["🥇", "🥈", "🥉"]
     for idx, user in enumerate(top_users, 1):
+        user_label = mention_service.build_user_mention(
+            telegram_id=int(user.get("telegram_id") or 0),
+            username=user.get("username"),
+            first_name=user.get("first_name"),
+            fallback="Участник",
+        )
         medal_lines.extend(
             [
-                f"{medals[idx - 1]} {rating_service._display_label(user)} — {int(user.get('total_score', 0))} LedoScore",
+                f"{medals[idx - 1]} {user_label} — {int(user.get('total_score', 0))} LedoScore",
             ]
         )
     top_block = "\n".join(medal_lines)
@@ -187,7 +193,7 @@ async def send_evening_checkup(bot: Bot, now: datetime | None = None) -> None:
         )
         + "\n\n📈 Твой путь сегодня: не теряй темп и закрой день сильным отчетом."
     )
-    await bot.send_message(REPORTS_GROUP_ID, text)
+    await bot.send_message(REPORTS_GROUP_ID, text, parse_mode="HTML")
 
 
 async def send_weekly_final(bot: Bot, now: datetime | None = None) -> None:
