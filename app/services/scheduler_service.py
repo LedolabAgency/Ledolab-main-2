@@ -21,6 +21,10 @@ def _is_reminder_window(now: datetime) -> bool:
     return now.hour == 20 and now.minute < 5
 
 
+def _is_evening_window(now: datetime) -> bool:
+    return now.hour == 21 and now.minute < 5
+
+
 def _is_weekly_final_window(now: datetime) -> bool:
     return now.weekday() == 6 and now.hour == 22 and now.minute < 5
 
@@ -33,6 +37,12 @@ async def _tick(bot: Bot) -> None:
         if await cache.acquire_lock(reminder_key, ex=12 * 60 * 60):
             await community_service.send_report_deadline_reminder(bot, now)
             logger.info("Scheduled report reminder sent for %s", now.date().isoformat())
+
+    if _is_evening_window(now):
+        evening_key = f"job:evening_checkup:{now.date().isoformat()}"
+        if await cache.acquire_lock(evening_key, ex=12 * 60 * 60):
+            await community_service.send_evening_checkup(bot, now)
+            logger.info("Scheduled evening check-up sent for %s", now.date().isoformat())
 
     if _is_weekly_final_window(now):
         weekly_key = f"job:weekly_final:{now.date().isoformat()}"

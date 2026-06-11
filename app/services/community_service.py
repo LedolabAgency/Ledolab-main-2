@@ -158,6 +158,32 @@ async def send_report_deadline_reminder(bot: Bot, now: datetime | None = None) -
     await bot.send_message(REPORTS_GROUP_ID, text)
 
 
+async def send_evening_checkup(bot: Bot, now: datetime | None = None) -> None:
+    if not REPORTS_GROUP_ID:
+        return
+
+    now = now or datetime.now(KYIV_TZ)
+    if now.hour != 21:
+        return
+
+    top_users = await rating_service.get_rating_leaderboard(limit=3)
+    medal_lines = []
+    medals = ["🥇", "🥈", "🥉"]
+    for idx, user in enumerate(top_users, 1):
+        medal_lines.extend(
+            [
+                f"{medals[idx - 1]} {rating_service._display_label(user)} — {int(user.get('total_score', 0))} LedoScore",
+            ]
+        )
+    top_block = "\n".join(medal_lines)
+    text = (
+        "🌙 Вечірній чек-ап: день уже в кармане, але ритм ще тримаємо. 🔥\n"
+        "Кто сегодня закрыл дело — красавчик. Кто молчит — завтра догоняем сильнее.\n\n"
+        + ("🏆 ТОП-3 ЗАРАЗ:\n\n" + top_block if top_block else "🏆 Пока без яркого топа, но вечер уже просит дисциплины.")
+    )
+    await bot.send_message(REPORTS_GROUP_ID, text)
+
+
 async def send_weekly_final(bot: Bot, now: datetime | None = None) -> None:
     if not REPORTS_GROUP_ID:
         return
