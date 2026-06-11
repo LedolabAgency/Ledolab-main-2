@@ -13,6 +13,8 @@ from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
 
 from app import cache, database
+# Імпортуємо сервіси, які використовуються в коді (включаючи реферальний та меншени)
+from app.services import referral_service, report_service, mention_service
 from app.config import CLUB_GROUP_URL, GROUP_ENTRY_URL, REPORTS_GROUP_ID, WEB_APP_URL
 from app.keyboards.inline.start import (
     after_goal_confirm_keyboard,
@@ -316,7 +318,7 @@ async def _start_goal_flow(message: types.Message, state: FSMContext) -> None:
     if not await database.has_completed_quiz(message.from_user.id):
         await message.answer(
             "🧭 Сначала пройди квиз, чтобы я понял, на каком ты этапе и как тебя правильно вести дальше.\n\n"
-            "После квиза откроются цель на 30 дней, план на 5 дней и дневные задачи 👇",
+            "После квиза откроются цель на 30 дней, plan на 5 дней и дневные задачи 👇",
             reply_markup=quiz_reply_keyboard(WEB_APP_URL),
         )
         return
@@ -331,7 +333,7 @@ async def _start_goal_flow(message: types.Message, state: FSMContext) -> None:
             "Мы специально не даем менять большую цель каждый день, чтобы ты не сбивал себе фокус.\n\n"
             "Если готов приступить уже сегодня — жми кнопку ниже 👇",
             inline_markup=after_goal_confirm_keyboard(me.username, CLUB_GROUP_URL),
-            inline_text="Если хочешь — можешь сразу перейти к сборке дня или вернуться в группу 👇",
+            inline_text="Если хочешь — можете сразу перейти к сборке дня или вернуться в группу 👇",
         )
         return
 
@@ -442,6 +444,18 @@ async def _start_day_flow(message: types.Message, state: FSMContext) -> None:
     await _show_day_intro(message, week_hint, deadline_text, path_day_number)
 
 
+async def _show_referral_invite(message: types.Message) -> None:
+    """Генерация и отображение реферального инвайта для пользователя."""
+    text, share_url = await referral_service.build_referral_invite(message.bot, message.from_user)
+    
+    markup = types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [types.InlineKeyboardButton(text="📢 Поделиться рефералкой", url=share_url)]
+        ]
+    )
+    await message.answer(text, reply_markup=markup, parse_mode="HTML")
+
+
 @router.message(CommandStart())
 async def cmd_start(
     message: types.Message,
@@ -527,7 +541,7 @@ async def show_30_day_goal(message: types.Message) -> None:
     )
 
 
-@router.message(F.text == "📅 Мой план на 5 дней")
+@router.message(F.text == "📅 Мой plan на 5 дней")
 @router.message(F.text == "📅 Мой план на 5 дней")
 async def show_7_day_plan(message: types.Message) -> None:
     """Show the saved weekly plan as a reminder."""
@@ -541,7 +555,7 @@ async def show_7_day_plan(message: types.Message) -> None:
 
     user = await database.get_club_user(message.from_user.id)
     if not user:
-        await message.answer("Сначала пройди стартовый путь в боте, чтобы мы могли сохранить твой план.")
+        await message.answer("Сначала пройди стартовый путь в боте, чтобы мы могли сохранить твою траекторию.")
         return
 
     active_goal = await database.get_active_goal(user["id"])
@@ -777,6 +791,8 @@ async def start_next_route_flow(query: types.CallbackQuery, state: FSMContext) -
     )
     await _send_goal_route_intro(query, goal_text)
     await query.answer("Собираем новый маршрут 🚀")
+
+
 @router.callback_query(TaskStates.waiting_task_text, F.data == "day_go")
 async def start_day_task_collection(query: types.CallbackQuery, state: FSMContext) -> None:
     await state.update_data(day_task_step=1, day_tasks=[])
@@ -827,7 +843,7 @@ async def collect_day_task_text(message: types.Message, state: FSMContext) -> No
     await _answer_private_with_actions(
         message,
         "⚠️ <b>Важно:</b>\n\n"
-        "Здесь решает не количество задач, а дисциплина.\n\n"
+        "Здесь решает не количество задач, а дисциплина.\n"
         "📅 Каждый день у тебя есть до 3 задач — это твой фокус\n"
         "🎯 Но баллы ты получаешь не за задачи, а за отчёт\n\n"
         "📤 Сдал отчёт → получил баллы\n"
@@ -970,7 +986,7 @@ async def handle_goal_text(message: types.Message, state: FSMContext) -> None:
         message,
         "🔥 <b>Отлично. Большую цель зафиксировали.</b>\n\n"
         "Теперь не пытаемся расписать весь месяц сразу.\n"
-            "Сейчас собираем <b>5 ближайших дней</b> — это не мелкие таски, а понятные дневные фокусы.\n\n"
+        "Сейчас собираем <b>5 ближайших дней</b> — это не мелкие таски, а понятные дневные фокусы.\n\n"
         "Нажми кнопку ниже, и мы спокойно начнем с первого дня 👇",
         inline_markup=goal_day_step_keyboard(1),
     )
