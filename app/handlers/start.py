@@ -443,6 +443,70 @@ async def _start_day_flow(message: types.Message, state: FSMContext) -> None:
     await _show_day_intro(message, week_hint, deadline_text, path_day_number)
 
 
+async def _start_report_flow(message: types.Message, state: FSMContext) -> None:
+    if not await database.has_completed_quiz(message.from_user.id):
+        await message.answer(
+            "🧭 Сначала пройди квиз — после него откроется сдача отчетов 👇",
+            reply_markup=quiz_reply_keyboard(WEB_APP_URL),
+        )
+        return
+
+    user = await database.ensure_club_user(
+        telegram_id=message.from_user.id,
+        username=message.from_user.username,
+        first_name=message.from_user.first_name,
+        language_code=message.from_user.language_code or "ru",
+    )
+    if not user:
+        await message.answer("❌ Не удалось подготовить твой профиль. Попробуй еще раз чуть позже.")
+        return
+
+    today = _club_day_date()
+    existing_report = await database.get_daily_report(user["id"], today)
+    if existing_report and str(existing_report.get("status") or "").lower() not in {"redo_requested", "rejected"}:
+        await _show_day_closed_message(message)
+        return
+
+    today_tasks = await database.get_today_tasks(user["id"], today)
+    task_texts = [
+        str(task.get("task_text", "")).strip()
+        for task in today_tasks
+        if str(task.get("task_text", "")).strip()
+    ]
+    if not task_texts and existing_report:
+        task_texts = [
+            str(task).strip()
+            for task in list(existing_report.get("tasks_snapshot") or [])
+            if str(task).strip()
+        ]
+
+    if not task_texts:
+        me = await message.bot.get_me()
+        await _answer_private_with_actions(
+            message,
+            "📌 <b>Сначала собери day.</b>\n\n"
+            "Чтобы сдать отчет, нужны задачи на сегодня.\n"
+            "Открой «Мой день» и зафиксируй до 3 задач — потом возвращайся сюда 👇",
+            inline_markup=open_private_flow_keyboard(me.username, "day_setup", "ОТКРЫТЬ МОЙ ДЕНЬ"),
+            inline_text="Перейти к сборке дня 👇",
+        )
+        return
+
+    await state.clear()
+    await state.set_state(ReportStates.waiting_proof)
+    await state.update_data(
+        report_user_id=user["id"],
+        report_date=today,
+        report_tasks=task_texts,
+        report_file_id=None,
+    )
+    await _answer_private_with_actions(
+        message,
+        report_service.report_intro_text(task_texts),
+        single_message=True,
+    )
+
+
 async def _show_referral_invite(message: types.Message) -> None:
     """Генерация и отображение реферального инвайта для пользователя."""
     text, share_url = await referral_service.build_referral_invite(message.bot, message.from_user)
@@ -485,6 +549,10 @@ async def cmd_start(
 
         if args == "day_setup" and state:
             await _start_day_flow(message, state)
+            return
+
+        if args == "report_setup" and state:
+            await _start_report_flow(message, state)
             return
 
         has_quiz = await database.has_completed_quiz(user_id)
@@ -601,6 +669,57 @@ async def show_referral_from_command(message: types.Message) -> None:
 async def show_referral_from_reply(message: types.Message) -> None:
     await _delete_private_message_safely(message)
     await _show_referral_invite(message)
+
+
+@router.callback_query(F.data.startswith("user_report:redo:"))
+async def restart_report_after_admin_comment(query: types.CallbackQuery, state: FSMContext) -> None:
+    report_id = query.data.split(":", 2)[2]
+    report = await database.get_daily_report_by_id(report_id)
+    if not report:
+        await query.answer("Отчет не найден.", show_alert=True)
+        return
+
+    club_user = await database.get_club_user(query.from_user.id)
+    if not club_user or club_user.get("id") != report.get("user_id"):
+        await query.answer("Это не твой отчет.", show_alert=True)
+        return
+
+    task_texts = [str(task).strip() for task in list(report.get("tasks_snapshot") or []) if str(task).strip()]
+    if not task_texts:
+        payload = report.get("report_payload") or []
+        if payload and payload[0].get("task_lines"):
+            task_texts = [str(task).strip() for task in payload[0]["task_lines"] if str(task).strip()]
+
+    if not task_texts:
+        await query.answer("Не удалось восстановить задачи для отчета.", show_alert=True)
+        return
+
+    await state.clear()
+    await state.set_state(ReportStates.waiting_proof)
+    await state.update_data(
+        report_user_id=report["user_id"],
+        report_date=str(report["report_date"]),
+        report_tasks=task_texts,
+        report_file_id=None,
+        redo_report_id=report_id,
+    )
+    await _answer_private_with_actions(
+        query,
+        report_service.report_intro_text(task_texts),
+        single_message=True,
+    )
+    await query.answer()
+
+
+@router.callback_query(F.data.startswith("user_report:drop:"))
+async def drop_report_redo(query: types.CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    try:
+        await query.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await query.message.answer("Ок, отчет на сегодня не пересдаем. Завтра начнешь новый day 👇")
+    await query.answer()
 
 
 @router.message(F.video_note, ReportStates.waiting_proof)

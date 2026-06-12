@@ -139,7 +139,7 @@ async def _show_group_menu(message: types.Message) -> None:
     me = await message.bot.get_me()
     await message.answer(
         "LedoLab Business Club — клуб сильнейших\n\nРабочее меню:",
-        reply_markup=club_main_menu(details_bot_username=me.username),
+        reply_markup=club_main_menu(bot_username=me.username),
     )
 
 
@@ -351,7 +351,7 @@ async def save_day_tasks(message: types.Message, state: FSMContext) -> None:
     me = await message.bot.get_me()
     await message.answer(
         "📅 День зафиксирован.\n\nТвои 3 задачи сохранены. Вечером возвращайся и сдавай отчет.",
-        reply_markup=club_main_menu(details_bot_username=me.username),
+        reply_markup=club_main_menu(bot_username=me.username),
     )
     await state.clear()
 
