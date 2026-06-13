@@ -128,6 +128,39 @@ def open_private_flow_keyboard(bot_username: str, start_param: str, button_text:
     )
 
 
+def goal_intro_keyboard(group_url: str | None = None) -> types.InlineKeyboardMarkup:
+    """Shown after the goal intro message (thinking-time screen).
+    Lets the user proceed immediately or return to the group."""
+    rows: list[list[types.InlineKeyboardButton]] = [
+        [types.InlineKeyboardButton(text="🎯 Поставить цель", callback_data="goal_start_now")],
+    ]
+    if group_url:
+        rows.append([types.InlineKeyboardButton(text="↩️ Вернуться в группу", url=group_url)])
+    return types.InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def goal_text_confirm_keyboard() -> types.InlineKeyboardMarkup:
+    """Confirm, postpone, or edit the typed 30-day goal text."""
+    return types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [types.InlineKeyboardButton(text="✅ Подтвердить цель", callback_data="goal_text_confirm")],
+            [types.InlineKeyboardButton(text="⏳ Отложить", callback_data="goal_text_postpone")],
+            [types.InlineKeyboardButton(text="✏️ Изменить цель", callback_data="goal_text_edit")],
+        ]
+    )
+
+
+def goal_split_keyboard(group_url: str | None = None) -> types.InlineKeyboardMarkup:
+    """After 30-day goal is saved — offer to split into 5-day milestones or postpone."""
+    rows: list[list[types.InlineKeyboardButton]] = [
+        [types.InlineKeyboardButton(text="🗓 Разбить на 5 дней", callback_data="goal_split_days")],
+        [types.InlineKeyboardButton(text="⏳ Отложить", callback_data="goal_split_later")],
+    ]
+    if group_url:
+        rows.append([types.InlineKeyboardButton(text="↩️ Вернуться в группу", url=group_url)])
+    return types.InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def goal_day_step_keyboard(day_number: int) -> types.InlineKeyboardMarkup:
     """Single wide button for the next day step."""
     return types.InlineKeyboardMarkup(
@@ -149,8 +182,8 @@ def goal_review_keyboard() -> types.InlineKeyboardMarkup:
     )
 
 
-def goal_text_confirm_keyboard() -> types.InlineKeyboardMarkup:
-    """Confirm or edit the main 30-day goal text."""
+def goal_text_confirm_keyboard_legacy() -> types.InlineKeyboardMarkup:
+    """Legacy — use goal_text_confirm_keyboard() instead."""
     return types.InlineKeyboardMarkup(
         inline_keyboard=[
             [types.InlineKeyboardButton(text="✅ Подтвердить цель", callback_data="goal_text_confirm")],
@@ -270,8 +303,12 @@ def club_main_menu(bot_username: str | None = None, group_url: str | None = None
             text="🎯 Моя цель (30 дней)",
             url=f"https://t.me/{bot_username}?start=goal_setup",
         )
+        route_button = types.InlineKeyboardButton(
+            text="📅 Моя цель на 5 дней",
+            url=f"https://t.me/{bot_username}?start=route_setup",
+        )
         day_button = types.InlineKeyboardButton(
-            text="📅 Мой день (до 3х задач)",
+            text="📌 Мой день (до 3х задач)",
             url=f"https://t.me/{bot_username}?start=day_setup",
         )
         report_button = types.InlineKeyboardButton(
@@ -282,13 +319,15 @@ def club_main_menu(bot_username: str | None = None, group_url: str | None = None
         rules_button = types.InlineKeyboardButton(text="📘 Как работает клуб", callback_data="rules_view")
     else:
         goal_button = types.InlineKeyboardButton(text="🎯 Моя цель (30 дней)", callback_data="goal_view")
-        day_button = types.InlineKeyboardButton(text="📅 Мой день (до 3х задач)", callback_data="day_view")
+        route_button = types.InlineKeyboardButton(text="📅 Моя цель на 5 дней", callback_data="route_view")
+        day_button = types.InlineKeyboardButton(text="📌 Мой день (до 3х задач)", callback_data="day_view")
         report_button = types.InlineKeyboardButton(text="📤 Сдать отчет", callback_data="report_submit")
         rating_button = types.InlineKeyboardButton(text="🏆 Рейтинг", callback_data="rating_view")
         rules_button = types.InlineKeyboardButton(text="📘 Как работает клуб", callback_data="rules_view")
 
     buttons = [
         [goal_button],
+        [route_button],
         [day_button],
         [report_button],
         [rating_button],

@@ -187,6 +187,13 @@ class KeyManager:
         """Referrer telegram id captured from start deep link."""
         return f"pending_referrer:{user_id}"
 
+    @staticmethod
+    def get_goal_thinking_key(user_id: int) -> str:
+        """Thinking-time key set when user opens the goal intro (TTL 2h).
+        While active — user has seen the intro and can proceed to set their goal.
+        After expiry — they must open the group button again to get a fresh intro."""
+        return f"goal_thinking:{user_id}"
+
 
 def seconds_until_midnight() -> int:
     """Return seconds until the next local midnight."""

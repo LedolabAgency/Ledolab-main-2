@@ -24,11 +24,14 @@ from app.keyboards.inline.start import (
     day_task_review_keyboard,
     goal_day_step_keyboard,
     goal_edit_days_keyboard,
+    goal_intro_keyboard,
     goal_review_keyboard,
+    goal_split_keyboard,
+    goal_text_confirm_keyboard,
     next_route_keyboard,
     open_private_flow_keyboard,
-    private_hub_reply_keyboard,
     quiz_reply_keyboard,
+    return_to_group_keyboard,
 )
 from app.states.quiz import GoalStates, ReportStates, TaskStates
 
@@ -271,32 +274,42 @@ async def _answer_private_with_actions(
         await sender.answer(text, reply_markup=inline_markup)
         return
 
-    sent = await sender.answer(
-        text,
-        reply_markup=private_hub_reply_keyboard() if chat.type == "private" else None,
-    )
+    sent = await sender.answer(text)
     if inline_markup:
         await sent.answer(inline_text, reply_markup=inline_markup)
 
 
-def _build_goal_review(goal_text: str, milestones: list[str]) -> str:
+def _build_goal_preview(goal_text: str) -> str:
+    """Beautiful single-goal preview shown before user confirms the 30-day goal."""
+    return (
+        "🎯 <b>Твоя цель на 30 дней:</b>\n\n"
+        f"<blockquote>{escape(goal_text)}</blockquote>\n\n"
+        "Это то, к чему ты придёшь через месяц.\n"
+        "Не список дел, не размытое желание — конкретный результат.\n\n"
+        "Всё верно? Подтверди, и мы начнём строить маршрут 👇"
+    )
+
+
+def _build_5day_review(goal_text: str, milestones: list[str]) -> str:
+    """Beautiful 5-day plan preview shown before user confirms milestones."""
+    day_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
     lines = [
-        "🧠 Проверь свой маршрут перед подтверждением\n",
-        "🎯 <b>Твоя большая цель на 30 дней:</b>",
-        escape(goal_text),
-        "",
-        "📅 <b>Фокус на ближайшие 5 дней:</b>",
+        "🗓 <b>Твой маршрут на 5 дней:</b>\n",
     ]
     for idx, milestone in enumerate(milestones, 1):
-        lines.append(f"{idx}. {escape(str(milestone))}")
-    lines.extend(
-        [
-            "",
-            "Если все выглядит правильно — жми <b>УТВЕРДИТЬ ЦЕЛИ</b> ✅",
-            "Если хочешь поправить конкретный day — жми <b>ИЗМЕНИТЬ ЦЕЛИ</b> ✏️",
-        ]
-    )
+        emoji = day_emojis[idx - 1] if idx <= 5 else f"{idx}."
+        lines.append(f"{emoji} {escape(str(milestone))}")
+    lines.extend([
+        "",
+        f"<i>Цель: {escape(goal_text)}</i>\n",
+        "Выглядит сильно? Если всё ок — подтверждай.\n"
+        "Хочешь поправить — жми Изменить 👇",
+    ])
     return "\n".join(lines)
+
+
+def _build_goal_review(goal_text: str, milestones: list[str]) -> str:
+    return _build_5day_review(goal_text, milestones)
 
 
 async def _show_goal_review(target: types.Message | types.CallbackQuery, state: FSMContext) -> None:
@@ -311,6 +324,35 @@ async def _show_goal_review(target: types.Message | types.CallbackQuery, state: 
         inline_markup=goal_review_keyboard(),
         inline_text="Проверь все и выбери, что делать дальше 👇",
     )
+
+
+async def _schedule_goal_thinking_reminder(bot: types.Bot, user_id: int, delay_seconds: int = 7200) -> None:
+    """Send a gentle reminder after thinking time expires."""
+    import asyncio
+    async def _worker() -> None:
+        try:
+            await asyncio.sleep(delay_seconds)
+            # Only send if user still hasn't started goal (thinking key expired = no reminder needed)
+            thinking_key = cache.KeyManager.get_goal_thinking_key(user_id)
+            still_thinking = await cache.get_data(thinking_key)
+            if not still_thinking:
+                return
+            goal_lock = await cache.get_data(cache.KeyManager.get_goal_lock_key(user_id))
+            if goal_lock:
+                return
+            await bot.send_message(
+                user_id,
+                "💭 Придумал цель?\n\n"
+                "Возвращайся — готов записать её прямо сейчас.\n"
+                "Зайди в группу и нажми 🎯 <b>Моя цель (30 дней)</b> 👇",
+                parse_mode="HTML",
+                reply_markup=return_to_group_keyboard(RETURN_GROUP_URL),
+            )
+        except Exception as e:
+            logger.debug("Goal thinking reminder failed for %s: %s", user_id, e)
+
+    import asyncio as _asyncio
+    _asyncio.create_task(_worker(), name=f"goal_reminder:{user_id}")
 
 
 async def _start_goal_flow(message: types.Message, state: FSMContext) -> None:
@@ -329,28 +371,208 @@ async def _start_goal_flow(message: types.Message, state: FSMContext) -> None:
             message,
             "🔒 <b>Твоя цель на 30 дней уже зафиксирована.</b>\n\n"
             "Это не ошибка, а часть дисциплины клуба.\n"
-            "Мы специально не даем менять большую цель каждый day, чтобы ты не сбивал себе фокус.\n\n"
-            "Если готов приступить уже сегодня — жми кнопку ниже 👇",
+            "Мы специально не даём менять большую цель каждый день, чтобы не сбивать фокус.\n\n"
+            "Если готов — переходи к сборке дня или вернись в группу 👇",
             inline_markup=after_goal_confirm_keyboard(me.username, CLUB_GROUP_URL),
-            inline_text="Если хочешь — можете сразу перейти к сборке дня или вернуться в группу 👇",
+            inline_text="Выбери, что делать дальше 👇",
         )
         return
 
+    # Thinking time: show intro + set 2h Redis key + schedule reminder
+    # If user already has the key (came back within 2h) — they already saw the intro, proceed to FSM
+    thinking_key = cache.KeyManager.get_goal_thinking_key(message.from_user.id)
+    already_thinking = await cache.get_data(thinking_key)
+
+    if not already_thinking:
+        # First time opening — show intro, give time to think
+        await cache.set_data(thinking_key, "1", ex=2 * 60 * 60)  # 2 hours
+        await _schedule_goal_thinking_reminder(message.bot, message.from_user.id)
+        await message.answer(
+            "🎯 <b>Цель на 30 дней — твой главный ориентир в клубе.</b>\n\n"
+            "Это не просто текст в боте. Это то, к чему ты будешь двигаться каждый день "
+            "через конкретные задачи, отчёты и рост в рейтинге.\n\n"
+            "Как работает система:\n"
+            "1️⃣ Ты ставишь <b>1 главную цель</b> на 30 дней\n"
+            "2️⃣ Разбиваешь её на <b>5-дневные маршруты</b>\n"
+            "3️⃣ Каждый день — <b>до 3 конкретных задач</b> + вечерний отчёт\n\n"
+            "Не спеши. Подумай — какой результат через 30 дней изменит твою реальность?\n\n"
+            "Когда готов — жми <b>Поставить цель</b> 👇",
+            reply_markup=goal_intro_keyboard(RETURN_GROUP_URL),
+            parse_mode="HTML",
+        )
+        return
+
+    # User came back (within 2h window) — enter goal FSM directly
+    await _enter_goal_text_state(message, state)
+
+
+async def _enter_goal_text_state(message: types.Message, state: FSMContext) -> None:
+    """Start the actual goal-writing FSM after thinking time."""
     await state.clear()
     await state.set_state(GoalStates.waiting_goal_text)
+    await message.answer(
+        "💪 Отлично — начнём.\n\n"
+        "Напиши свою <b>главную цель на 30 дней</b>.\n\n"
+        "Одно чёткое предложение. Конкретный результат, который ты хочешь получить через месяц.\n\n"
+        "Эта цель потом разобьётся на 5-дневные маршруты — "
+        "но сначала зафиксируем главный ориентир 👇",
+        parse_mode="HTML",
+    )
+
+
+@router.callback_query(F.data == "goal_start_now")
+async def handle_goal_start_now(query: types.CallbackQuery, state: FSMContext) -> None:
+    """User clicked 'Поставить цель' from the thinking-time intro screen."""
+    try:
+        await query.answer()
+        await _enter_goal_text_state(query.message, state)
+    except Exception as e:
+        logger.error("Error in goal_start_now: %s", e, exc_info=True)
+        await query.answer("Ошибка. Попробуй ещё раз.")
+
+
+@router.callback_query(F.data == "goal_text_postpone")
+async def handle_goal_text_postpone(query: types.CallbackQuery, state: FSMContext) -> None:
+    """User postponed goal confirmation — clear FSM, encourage to return."""
+    try:
+        await state.clear()
+        await query.answer()
+        await query.message.answer(
+            "⏳ Хорошо — не торопись.\n\n"
+            "Сильная цель требует ясности. Подумай ещё раз и возвращайся, "
+            "когда будешь готов зафиксировать её.\n\n"
+            "Мы тебя ждём 💪",
+            reply_markup=return_to_group_keyboard(RETURN_GROUP_URL),
+        )
+    except Exception as e:
+        logger.error("Error in goal_text_postpone: %s", e, exc_info=True)
+        await query.answer("Ошибка. Попробуй ещё раз.")
+
+
+@router.callback_query(F.data == "goal_split_days")
+async def handle_goal_split_days(query: types.CallbackQuery, state: FSMContext) -> None:
+    """User chose to split the 30-day goal into 5-day milestones right now."""
+    try:
+        await query.answer()
+        data = await state.get_data()
+        goal_text = data.get("goal_text", "")
+        await _send_goal_route_intro(query, goal_text)
+    except Exception as e:
+        logger.error("Error in goal_split_days: %s", e, exc_info=True)
+        await query.answer("Ошибка. Попробуй ещё раз.")
+
+
+@router.callback_query(F.data == "goal_split_later")
+async def handle_goal_split_later(query: types.CallbackQuery, state: FSMContext) -> None:
+    """User chose to split into 5 days later."""
+    try:
+        await state.clear()
+        await query.answer()
+        await query.message.answer(
+            "👍 Окей — цель зафиксирована.\n\n"
+            "Когда будешь готов разбить её на 5-дневные маршруты — "
+            "возвращайся в группу и нажми <b>📅 Моя цель на 5 дней</b>.",
+            reply_markup=return_to_group_keyboard(RETURN_GROUP_URL),
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        logger.error("Error in goal_split_later: %s", e, exc_info=True)
+        await query.answer("Ошибка. Попробуй ещё раз.")
+
+
+async def _start_route_flow(message: types.Message, state: FSMContext) -> None:
+    """Handle deep link ?start=route_setup — 'Моя цель на 5 дней' button from group."""
+    user_id = message.from_user.id
+
+    if not await database.has_completed_quiz(user_id):
+        await message.answer(
+            "🧭 Сначала пройди квиз — после него откроются цель на 30 дней и 5-дневный маршрут 👇",
+            reply_markup=quiz_reply_keyboard(WEB_APP_URL),
+        )
+        return
+
+    user = await database.ensure_club_user(
+        telegram_id=user_id,
+        username=message.from_user.username,
+        first_name=message.from_user.first_name,
+        language_code=message.from_user.language_code or "ru",
+    )
+    if not user:
+        await message.answer("❌ Не удалось подготовить твой профиль. Попробуй ещё раз чуть позже.")
+        return
+
+    active_goal = await database.get_active_goal(user["id"])
+    if not active_goal:
+        await message.answer(
+            "🎯 <b>Сначала поставь большую цель на 30 дней.</b>\n\n"
+            "5-дневный маршрут строится поверх неё — без цели строить некуда.\n\n"
+            "Вернись в группу и нажми <b>🎯 Моя цель (30 дней)</b> 👇",
+            reply_markup=return_to_group_keyboard(RETURN_GROUP_URL),
+            parse_mode="HTML",
+        )
+        return
+
+    goal_text = str(active_goal.get("goal_text") or "").strip()
+    milestones = [m for m in (active_goal.get("milestones") or []) if m]
+
+    # No milestones yet — user confirmed goal but hasn't built the 5-day route
+    if not milestones:
+        await state.clear()
+        await state.set_state(GoalStates.waiting_day_text)
+        await state.update_data(goal_text=goal_text, milestones=[], editing_day=None)
+        await _send_goal_route_intro(message, goal_text)
+        return
+
+    # Milestones exist — check if current 5-day route is done (streak >= 5)
+    current_streak = int((await cache.get_data(cache.KeyManager.get_streak_key(user_id))) or 0)
+
+    if current_streak >= 5 and _goal_is_inside_30_days(active_goal):
+        # Route completed — offer to build a new one
+        await _answer_private_with_actions(
+            message,
+            "🏆 <b>Предыдущий 5-дневный маршрут закрыт — отлично!</b>\n\n"
+            "30-дневная цель остается в силе. Давай соберем следующий маршрут на 5 дней?\n\n"
+            f"🎯 <i>{escape(goal_text)}</i>",
+            inline_markup=next_route_keyboard(RETURN_GROUP_URL),
+            single_message=True,
+        )
+        return
+
+    if current_streak >= 5 and not _goal_is_inside_30_days(active_goal):
+        # 30-day cycle finished — new big goal needed
+        await state.clear()
+        await state.set_state(GoalStates.waiting_goal_text)
+        await _answer_private_with_actions(
+            message,
+            "🏁 <b>30-дневный цикл завершён.</b>\n\n"
+            "Старый маршрут больше не тянем. Напиши новую большую цель на следующие 30 дней 👇",
+            inline_markup=back_to_group_keyboard(RETURN_GROUP_URL) if RETURN_GROUP_URL else None,
+            single_message=True,
+        )
+        return
+
+    # Route is in progress — show current 5-day plan as reminder
+    lines = [
+        f"📅 <b>Твой текущий маршрут на 5 дней:</b>\n",
+        f"<i>Цель: {escape(goal_text)}</i>\n",
+    ]
+    day_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
+    for idx, milestone in enumerate(milestones[:5], 1):
+        emoji = day_emojis[idx - 1]
+        lines.append(f"{emoji} {escape(str(milestone))}")
+
+    route_day = ((current_streak) % 5) + 1 if current_streak > 0 else 1
+    lines.extend([
+        "",
+        f"📍 Сейчас ты на дне <b>{min(route_day, 5)}/5</b> этого маршрута.\n",
+        "Держи фокус и продолжай двигаться по шагам 💪",
+    ])
+
     await _answer_private_with_actions(
         message,
-        "🎯 <b>LedoLab Business Club</b>\n\n"
-        "Сейчас мы спокойно соберем твой маршрут на ближайшие <b>30 дней</b>.\n\n"
-        "Как это работает:\n"
-        "1. Ты ставишь <b>1 главную цель</b> на месяц\n"
-        "2. Потом разбиваешь ее на <b>5 ближайших дней</b>\n"
-        "3. А уже после этого превращаешь каждый day в <b>до 3 конкретных задач</b>\n\n"
-        "Не усложняй и не пиши все сразу.\n"
-        "Сейчас нужен только один понятный ориентир, к которому ты реально хочешь прийти 🔥\n\n"
-        "Напиши свою <b>цель на 30 дней</b> 👇",
-        inline_markup=back_to_group_keyboard(CLUB_GROUP_URL) if CLUB_GROUP_URL else None,
-        inline_text="Если хочешь вернуться в группу — вот быстрый переход 👇",
+        "\n".join(lines),
+        inline_markup=back_to_group_keyboard(RETURN_GROUP_URL) if RETURN_GROUP_URL else None,
+        inline_text="Вернуться в группу 👇",
     )
 
 
@@ -553,6 +775,10 @@ async def cmd_start(
 
         if args == "report_setup" and state:
             await _start_report_flow(message, state)
+            return
+
+        if args == "route_setup" and state:
+            await _start_route_flow(message, state)
             return
 
         has_quiz = await database.has_completed_quiz(user_id)
@@ -1092,22 +1318,70 @@ async def handle_day_flow_back(query: types.CallbackQuery, state: FSMContext) ->
 
 @router.message(GoalStates.waiting_goal_text)
 async def handle_goal_text(message: types.Message, state: FSMContext) -> None:
-    """Save the main 30-day goal in FSM only until user confirms it."""
+    """Save the main 30-day goal in FSM and show confirmation preview."""
     goal_text = (message.text or "").strip()
     if len(goal_text) < 5:
-        await message.answer("🤏 Напиши цель чуть конкретнее, чтобы было понятно, к чему ты идешь.")
+        await message.answer("🤏 Напиши цель чуть конкретнее, чтобы было понятно, к чему ты идёшь.")
         return
 
     await state.update_data(goal_text=goal_text, milestones=[], editing_day=None)
-    await state.set_state(GoalStates.waiting_day_text)
-    await _answer_private_with_actions(
-        message,
-        "🔥 <b>Отлично. Большую цель зафиксировали.</b>\n\n"
-        "Теперь не пытаемся расписать весь месяц сразу.\n"
-        "Сейчас собираем <b>5 ближайших дней</b> — это не мелкие таски, а понятные дневные фокусы.\n\n"
-        "Нажми кнопку ниже, и мы спокойно начнем с первого дня 👇",
-        inline_markup=goal_day_step_keyboard(1),
+    await state.set_state(GoalStates.confirming_goal)
+    await message.answer(
+        _build_goal_preview(goal_text),
+        reply_markup=goal_text_confirm_keyboard(),
+        parse_mode="HTML",
     )
+
+
+@router.callback_query(GoalStates.confirming_goal, F.data == "goal_text_confirm")
+async def handle_goal_text_confirmed(query: types.CallbackQuery, state: FSMContext) -> None:
+    """User confirmed their 30-day goal — save to DB and offer to split into 5 days."""
+    try:
+        await query.answer()
+        data = await state.get_data()
+        goal_text = data.get("goal_text", "")
+
+        user = await database.ensure_club_user(
+            telegram_id=query.from_user.id,
+            username=query.from_user.username,
+            first_name=query.from_user.first_name,
+            language_code=query.from_user.language_code or "ru",
+        )
+        if not user:
+            await query.message.answer("❌ Не удалось сохранить цель. Попробуй ещё раз чуть позже.")
+            return
+
+        await database.set_active_goal(user["id"], goal_text, [])
+        await cache.set_data(cache.KeyManager.get_goal_lock_key(query.from_user.id), "1")
+        await cache.delete_data(cache.KeyManager.get_goal_thinking_key(query.from_user.id))
+
+        await query.message.answer(
+            "🔥 <b>Цель зафиксирована!</b>\n\n"
+            f"<blockquote>{escape(goal_text)}</blockquote>\n\n"
+            "Теперь нужно разбить её на <b>5-дневный маршрут</b> — "
+            "конкретные фокусы на каждый день, чтобы двигаться по шагам, а не в туман.\n\n"
+            "Готов сделать это прямо сейчас? 👇",
+            reply_markup=goal_split_keyboard(RETURN_GROUP_URL),
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        logger.error("Error confirming goal text: %s", e, exc_info=True)
+        await query.answer("Ошибка. Попробуй ещё раз.")
+
+
+@router.callback_query(GoalStates.confirming_goal, F.data == "goal_text_edit")
+async def handle_goal_text_edit(query: types.CallbackQuery, state: FSMContext) -> None:
+    """User wants to rewrite the 30-day goal."""
+    try:
+        await query.answer()
+        await state.set_state(GoalStates.waiting_goal_text)
+        await query.message.answer(
+            "✏️ Окей — напиши цель заново.\n\n"
+            "Одно чёткое предложение. Конкретный результат через 30 дней 👇",
+        )
+    except Exception as e:
+        logger.error("Error in goal_text_edit: %s", e, exc_info=True)
+        await query.answer("Ошибка. Попробуй ещё раз.")
 
 
 @router.callback_query(GoalStates.waiting_day_text, F.data.startswith("goal_day:"))
