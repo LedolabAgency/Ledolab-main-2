@@ -156,13 +156,9 @@ async def handle_contact_share(message: types.Message) -> None:
         "2️⃣ Разбиваешь на 5-дневные маршруты\n"
         "3️⃣ Каждый день — до 3 задач + вечерний отчет\n"
         "4️⃣ Получаешь LedoScore и растёшь в рейтинге\n\n"
-        "Всё начинается в группе 👇",
-        reply_markup=types.ReplyKeyboardRemove(),
-        parse_mode="HTML",
-    )
-    await message.answer(
-        "Заходи — там закреплено рабочее меню клуба.",
+        "Заходи в группу — там закреплено рабочее меню клуба 👇",
         reply_markup=return_to_group_keyboard(GROUP_ENTRY_URL or CLUB_GROUP_URL),
+        parse_mode="HTML",
     )
     try:
         await community_service.announce_member_joined(
