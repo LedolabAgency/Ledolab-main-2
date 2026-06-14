@@ -150,6 +150,12 @@ async def handle_contact_share(message: types.Message) -> None:
     await referral_service.bind_pending_referral(message.from_user.id)
 
     try:
+        remove_msg = await message.answer("​", reply_markup=types.ReplyKeyboardRemove())
+        await remove_msg.delete()
+    except Exception as e:
+        logger.warning("Failed to remove reply keyboard: %s", e)
+
+    try:
         await message.answer_video_note(video_note="DQACAgIAAxkBAAIJAAFqLsz794WUmlRDtogPNDxFyHhzNAACjp8AAksxeEmZvGQ5Iw-gZTwE")
     except Exception as e:
         logger.warning("Failed to send welcome video note: %s", e)
