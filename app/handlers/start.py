@@ -1303,6 +1303,29 @@ async def confirm_day_tasks(query: types.CallbackQuery, state: FSMContext) -> No
         ex=cache.seconds_until_next_22(),
     )
 
+    if REPORTS_GROUP_ID:
+        user_label = mention_service.build_user_mention(
+            telegram_id=query.from_user.id,
+            username=club_user.get("username"),
+            first_name=club_user.get("first_name") or query.from_user.first_name,
+            fallback="Участник",
+        )
+        group_text_lines = [
+            f"📌 {user_label} собрал свой день\n",
+            "🎯 <b>Задачи на сегодня:</b>",
+        ]
+        for idx, task_text in enumerate(tasks, 1):
+            group_text_lines.append(f"{idx}. {escape(str(task_text))}")
+        group_text_lines.extend([
+            "",
+            f"⏰ Дедлайн: {_club_day_deadline_text()}",
+            "Погнали 🔥",
+        ])
+        try:
+            await query.bot.send_message(REPORTS_GROUP_ID, "\n".join(group_text_lines))
+        except Exception as exc:
+            logger.error("Failed to post daily tasks to group: %s", exc, exc_info=True)
+
     await state.clear()
     await _show_saved_day_message(
         query,
