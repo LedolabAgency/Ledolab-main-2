@@ -1418,6 +1418,20 @@ async def goal_route_back_to_intro(query: types.CallbackQuery, state: FSMContext
     await query.answer("↩️ Шаг назад")
 
 
+@router.callback_query(GoalStates.reviewing, F.data == "goal_review_back")
+async def goal_review_back_to_day(query: types.CallbackQuery, state: FSMContext) -> None:
+    """Step back from the 5-day review screen to the last day input."""
+    await _show_goal_day_prompt(query, state, 5)
+    await query.answer("↩️ Шаг назад")
+
+
+@router.callback_query(GoalStates.reviewing, F.data == "goal_edit_back")
+async def goal_edit_back_to_review(query: types.CallbackQuery, state: FSMContext) -> None:
+    """Step back from the day-picker to the 5-day review screen."""
+    await _show_goal_review(query, state)
+    await query.answer("↩️ Шаг назад")
+
+
 @router.message(GoalStates.waiting_day_text)
 @router.message(GoalStates.editing_day)
 async def save_goal_day_text(message: types.Message, state: FSMContext) -> None:

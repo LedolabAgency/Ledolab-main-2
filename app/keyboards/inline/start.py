@@ -162,11 +162,10 @@ def goal_split_keyboard(group_url: str | None = None) -> types.InlineKeyboardMar
 
 
 def goal_day_step_keyboard(day_number: int) -> types.InlineKeyboardMarkup:
-    """Single wide button for the next day step."""
+    """Single wide button to start the 5-day route (shown on the route intro screen)."""
     return types.InlineKeyboardMarkup(
         inline_keyboard=[
             [types.InlineKeyboardButton(text=f"{day_number}-Й ДЕНЬ", callback_data=f"goal_day:{day_number}")],
-            [types.InlineKeyboardButton(text="⬅️ Шаг назад", callback_data="flow_back")],
         ]
     )
 
@@ -187,7 +186,7 @@ def goal_review_keyboard() -> types.InlineKeyboardMarkup:
         inline_keyboard=[
             [types.InlineKeyboardButton(text="✅ Утвердить plan", callback_data="goal_confirm")],
             [types.InlineKeyboardButton(text="✏️ Изменить plan", callback_data="goal_edit")],
-            [types.InlineKeyboardButton(text="⬅️ Шаг назад", callback_data="flow_back")],
+            [types.InlineKeyboardButton(text="⬅️ Шаг назад", callback_data="goal_review_back")],
         ]
     )
 
@@ -207,12 +206,12 @@ def goal_edit_days_keyboard() -> types.InlineKeyboardMarkup:
     """Pick which day to edit before final confirmation."""
     return types.InlineKeyboardMarkup(
         inline_keyboard=[
-            [types.InlineKeyboardButton(text="1-Й ДЕНЬ", callback_data="goal_edit_day:1")],
-            [types.InlineKeyboardButton(text="2-Й ДЕНЬ", callback_data="goal_edit_day:2")],
-            [types.InlineKeyboardButton(text="3-Й ДЕНЬ", callback_data="goal_edit_day:3")],
-            [types.InlineKeyboardButton(text="4-Й ДЕНЬ", callback_data="goal_edit_day:4")],
-            [types.InlineKeyboardButton(text="5-Й ДЕНЬ", callback_data="goal_edit_day:5")],
-            [types.InlineKeyboardButton(text="⬅️ Шаг назад", callback_data="flow_back")],
+            [types.InlineKeyboardButton(text="1-Й ДЕНЬ", callback_data="goal_day:1")],
+            [types.InlineKeyboardButton(text="2-Й ДЕНЬ", callback_data="goal_day:2")],
+            [types.InlineKeyboardButton(text="3-Й ДЕНЬ", callback_data="goal_day:3")],
+            [types.InlineKeyboardButton(text="4-Й ДЕНЬ", callback_data="goal_day:4")],
+            [types.InlineKeyboardButton(text="5-Й ДЕНЬ", callback_data="goal_day:5")],
+            [types.InlineKeyboardButton(text="⬅️ Шаг назад", callback_data="goal_edit_back")],
         ]
     )
 
