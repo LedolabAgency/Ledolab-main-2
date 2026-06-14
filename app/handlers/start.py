@@ -374,16 +374,22 @@ async def _start_goal_flow(message: types.Message, state: FSMContext) -> None:
 
     goal_lock = await cache.get_data(cache.KeyManager.get_goal_lock_key(message.from_user.id))
     if goal_lock:
-        me = await message.bot.get_me()
-        await _answer_private_with_actions(
-            message,
-            "🔒 <b>Твоя цель на 30 дней уже зафиксирована.</b>\n\n"
-            "Это не ошибка, а часть дисциплины клуба.\n"
-            "Мы специально не даём менять большую цель каждый день, чтобы не сбивать фокус.\n\n"
-            "Если готов — переходи к сборке дня или вернись в группу 👇",
-            inline_markup=after_goal_confirm_keyboard(me.username, CLUB_GROUP_URL),
-            inline_text="Выбери, что делать дальше 👇",
-            single_message=True,
+        goal_text_display = ""
+        db_user = await database.get_user(message.from_user.id)
+        if db_user:
+            active_goal = await database.get_active_goal(db_user["id"])
+            if active_goal:
+                goal_text_display = str(active_goal.get("goal_text") or "").strip()
+
+        locked_text = "🔒 <b>Твоя цель на 30 дней уже зафиксирована.</b>\n\n"
+        if goal_text_display:
+            locked_text += f"<blockquote>{escape(goal_text_display)}</blockquote>\n\n"
+        locked_text += "Цель нельзя менять — это часть дисциплины клуба. Держи фокус и двигайся вперёд 👇"
+
+        await message.answer(
+            locked_text,
+            reply_markup=return_to_group_keyboard(RETURN_GROUP_URL),
+            parse_mode="HTML",
         )
         return
 
