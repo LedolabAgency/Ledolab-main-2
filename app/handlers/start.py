@@ -106,6 +106,8 @@ async def _show_day_closed_message(target: types.Message | types.CallbackQuery) 
         "🔥 <b>День закрыт.</b>\n\n"
         "Отчет за этот день уже сдан, LedoScore зафиксирован.\n"
         "На сегодня всё — выдохни, сохрани темп и возвращайся завтра за новым сильным днём 🚀",
+        inline_markup=return_to_group_keyboard(RETURN_GROUP_URL),
+        single_message=True,
     )
 
 
