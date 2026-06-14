@@ -148,7 +148,7 @@ async def handle_contact_share(message: types.Message) -> None:
     await referral_service.bind_pending_referral(message.from_user.id)
 
     try:
-        await message.answer_video_note(video_note="DQACAgIAAxkBAAFMagNqLn1yt0QByM26WL9k9D_w1Lx_mwACK5kAArPseEllMLrj7X_dGzwE")
+        await message.answer_video_note(video_note="DQACAgIAAxkBAAIJAAFqLsz794WUmlRDtogPNDxFyHhzNAACjp8AAksxeEmZvGQ5Iw-gZTwE")
     except Exception as e:
         logger.warning("Failed to send welcome video note: %s", e)
     group_url = GROUP_ENTRY_URL or CLUB_GROUP_URL

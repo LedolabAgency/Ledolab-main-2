@@ -975,11 +975,6 @@ async def reject_non_video_report(message: types.Message) -> None:
     )
 
 
-@router.message(F.video_note)
-async def debug_video_note_file_id(message: types.Message) -> None:
-    await message.answer(f"file_id: <code>{message.video_note.file_id}</code>", parse_mode="HTML")
-
-
 @router.callback_query(ReportStates.reviewing, F.data == "report_redo")
 async def redo_report_video_note(query: types.CallbackQuery, state: FSMContext) -> None:
     await state.update_data(report_file_id=None)
