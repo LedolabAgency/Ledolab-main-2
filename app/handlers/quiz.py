@@ -151,6 +151,7 @@ async def handle_contact_share(message: types.Message) -> None:
         await message.answer_video_note(video_note="DQACAgIAAxkBAAFMagNqLn1yt0QByM26WL9k9D_w1Lx_mwACK5kAArPseEllMLrj7X_dGzwE")
     except Exception as e:
         logger.warning("Failed to send welcome video note: %s", e)
+    group_url = GROUP_ENTRY_URL or CLUB_GROUP_URL
     await message.answer(
         "✅ <b>Готово — ты внутри LedoLab Business Club.</b>\n\n"
         "Это не чат мотивации. Это среда, где предприниматели каждый день "
@@ -161,12 +162,10 @@ async def handle_contact_share(message: types.Message) -> None:
         "3️⃣ Каждый день — до 3 задач + вечерний отчет\n"
         "4️⃣ Получаешь LedoScore и растёшь в рейтинге\n\n"
         "Заходи в группу — там закреплено рабочее меню клуба 👇",
-        reply_markup=types.ReplyKeyboardRemove(),
+        reply_markup=types.InlineKeyboardMarkup(
+            inline_keyboard=[[types.InlineKeyboardButton(text="Зайти в группу", url=group_url)]]
+        ) if group_url else None,
         parse_mode="HTML",
-    )
-    await message.answer(
-        "Перейти в группу 👇",
-        reply_markup=return_to_group_keyboard(GROUP_ENTRY_URL or CLUB_GROUP_URL),
     )
     try:
         await community_service.announce_member_joined(
