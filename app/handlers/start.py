@@ -375,9 +375,14 @@ async def _start_goal_flow(message: types.Message, state: FSMContext) -> None:
     goal_lock = await cache.get_data(cache.KeyManager.get_goal_lock_key(message.from_user.id))
     if goal_lock:
         goal_text_display = ""
-        db_user = await database.get_user(message.from_user.id)
-        if db_user:
-            active_goal = await database.get_active_goal(db_user["id"])
+        club_user = await database.ensure_club_user(
+            telegram_id=message.from_user.id,
+            username=message.from_user.username,
+            first_name=message.from_user.first_name,
+            language_code=message.from_user.language_code or "ru",
+        )
+        if club_user:
+            active_goal = await database.get_active_goal(club_user["id"])
             if active_goal:
                 goal_text_display = str(active_goal.get("goal_text") or "").strip()
 
