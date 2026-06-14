@@ -34,7 +34,7 @@ def contact_reply_keyboard() -> types.ReplyKeyboardMarkup:
             ],
         ],
         resize_keyboard=True,
-        is_persistent=True,
+        one_time_keyboard=True,
         input_field_placeholder="Поделись номером телефона",
     )
 
