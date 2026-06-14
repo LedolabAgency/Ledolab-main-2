@@ -5,6 +5,7 @@ Quiz handler - processes quiz completion from WebApp.
 import logging
 import json
 from aiogram import Router, types, F
+from aiogram.fsm.context import FSMContext
 from app import database, cache
 from app.config import CLUB_GROUP_URL, GROUP_ENTRY_URL
 from app.keyboards.inline.start import contact_reply_keyboard, club_group_keyboard, return_to_group_keyboard
@@ -19,15 +20,16 @@ def _pending_quiz_key(user_id: int) -> str:
 
 
 @router.message(F.web_app_data)
-async def handle_quiz_completion(message: types.Message) -> None:
+async def handle_quiz_completion(message: types.Message, state: FSMContext) -> None:
     """
     Handle WebApp quiz data.
     Creates user profile after quiz completion.
     """
+    await state.clear()
     user_id = message.from_user.id
     username = message.from_user.username
     first_name = message.from_user.first_name
-    
+
     try:
         # Parse quiz data
         quiz_data = json.loads(message.web_app_data.data)
