@@ -469,10 +469,26 @@ async def handle_goal_text_postpone(query: types.CallbackQuery, state: FSMContex
         await query.answer("Ошибка. Попробуй ещё раз.")
 
 
+async def _route_already_set(user_id: int) -> bool:
+    """True if the user already has a confirmed 5-day route saved in DB."""
+    club_user = await database.get_club_user(user_id)
+    if not club_user:
+        return False
+    active_goal = await database.get_active_goal(club_user["id"])
+    if not active_goal:
+        return False
+    milestones = [m for m in (active_goal.get("milestones") or []) if m]
+    return len(milestones) >= 5
+
+
 @router.callback_query(F.data == "goal_split_days")
 async def handle_goal_split_days(query: types.CallbackQuery, state: FSMContext) -> None:
     """User chose to split the 30-day goal into 5-day milestones right now."""
     try:
+        # Guard: route already confirmed — this is a stale button, don't restart the flow.
+        if await _route_already_set(query.from_user.id):
+            await query.answer("✅ Маршрут на 5 дней уже собран. Цели менять нельзя.", show_alert=True)
+            return
         await query.answer()
         data = await state.get_data()
         goal_text = data.get("goal_text", "")
@@ -1632,3 +1648,21 @@ async def confirm_goal_flow(query: types.CallbackQuery, state: FSMContext) -> No
     )
     await state.clear()
     await query.answer("Цели подтверждены ✅")
+
+
+# --- Stale goal-flow buttons (no FSM state) -------------------------------
+# Registered AFTER all state-specific goal handlers, so they only catch clicks
+# on OUTDATED messages whose flow was already finished (state cleared).
+@router.callback_query(
+    F.data.startswith("goal_day:")
+    | F.data.in_({"goal_route_back", "goal_review_back", "goal_edit_back", "goal_confirm", "goal_edit"})
+)
+async def handle_stale_goal_buttons(query: types.CallbackQuery) -> None:
+    """Catch clicks on outdated goal-flow buttons after the route is confirmed."""
+    if await _route_already_set(query.from_user.id):
+        await query.answer("✅ Цели уже поставлены. Менять нельзя.", show_alert=True)
+    else:
+        await query.answer(
+            "⚠️ Это меню устарело. Открой 📅 Моя цель на 5 дней заново.",
+            show_alert=True,
+        )
