@@ -147,6 +147,7 @@ async def handle_contact_share(message: types.Message) -> None:
     await cache.delete_data(_pending_quiz_key(message.from_user.id))
     await referral_service.bind_pending_referral(message.from_user.id)
 
+    await message.answer_video_note(video_note="DQACAgIAAxkBAAFMagNqLn1yt0QByM26WL9k9D_w1Lx_mwACK5kAArPseEllMLrj7X_dGzwE")
     await message.answer(
         "✅ <b>Готово — ты внутри LedoLab Business Club.</b>\n\n"
         "Это не чат мотивации. Это среда, где предприниматели каждый день "
