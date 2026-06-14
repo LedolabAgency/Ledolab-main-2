@@ -171,6 +171,16 @@ def goal_day_step_keyboard(day_number: int) -> types.InlineKeyboardMarkup:
     )
 
 
+def goal_day_back_keyboard(day_number: int) -> types.InlineKeyboardMarkup:
+    """Back-only button shown while the user types a 5-day milestone."""
+    back_cb = f"goal_day:{day_number - 1}" if day_number > 1 else "goal_route_back"
+    return types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [types.InlineKeyboardButton(text="⬅️ Шаг назад", callback_data=back_cb)],
+        ]
+    )
+
+
 def goal_review_keyboard() -> types.InlineKeyboardMarkup:
     """Actions after the full 5-day plan is prepared."""
     return types.InlineKeyboardMarkup(

@@ -22,6 +22,7 @@ from app.keyboards.inline.start import (
     day_start_keyboard,
     day_task_next_keyboard,
     day_task_review_keyboard,
+    goal_day_back_keyboard,
     goal_day_step_keyboard,
     goal_edit_days_keyboard,
     goal_intro_keyboard,
@@ -179,6 +180,7 @@ async def _show_goal_day_prompt(
     target: types.Message | types.CallbackQuery,
     state: FSMContext,
     day_number: int,
+    prefix: str = "",
 ) -> None:
     data = await state.get_data()
     milestones = data.get("milestones", [])
@@ -197,7 +199,9 @@ async def _show_goal_day_prompt(
 
     await _answer_private_with_actions(
         target,
-        prompts.get(day_number, "Напиши фокус дня 👇"),
+        prefix + prompts.get(day_number, "Напиши фокус дня 👇"),
+        inline_markup=goal_day_back_keyboard(day_number),
+        single_message=True,
     )
 
 
@@ -1395,11 +1399,22 @@ async def handle_goal_text_edit(query: types.CallbackQuery, state: FSMContext) -
 
 
 @router.callback_query(GoalStates.waiting_day_text, F.data.startswith("goal_day:"))
+@router.callback_query(GoalStates.editing_day, F.data.startswith("goal_day:"))
 @router.callback_query(GoalStates.reviewing, F.data.startswith("goal_day:"))
 async def open_goal_day_step(query: types.CallbackQuery, state: FSMContext) -> None:
     """Open a specific 5-day milestone step."""
     day_number = int(query.data.split(":")[1])
     await _show_goal_day_prompt(query, state, day_number)
+    await query.answer("↩️ Шаг назад")
+
+
+@router.callback_query(GoalStates.waiting_day_text, F.data == "goal_route_back")
+@router.callback_query(GoalStates.editing_day, F.data == "goal_route_back")
+async def goal_route_back_to_intro(query: types.CallbackQuery, state: FSMContext) -> None:
+    """Step back from day 1 to the 5-day route intro screen."""
+    data = await state.get_data()
+    goal_text = data.get("goal_text", "")
+    await _send_goal_route_intro(query, goal_text)
     await query.answer("↩️ Шаг назад")
 
 
@@ -1423,14 +1438,11 @@ async def save_goal_day_text(message: types.Message, state: FSMContext) -> None:
     await state.update_data(milestones=milestones)
 
     if day_number < 5 and all(milestones[:day_number]):
-        await state.update_data(editing_day=None)
-        await state.set_state(GoalStates.waiting_day_text)
-        await _answer_private_with_actions(
+        await _show_goal_day_prompt(
             message,
-            f"✅ <b>{day_number}-й день сохранён.</b>\n\n"
-            "Идем дальше спокойно, шаг за шагом 👇",
-            inline_markup=goal_day_step_keyboard(day_number + 1),
-            single_message=True,
+            state,
+            day_number + 1,
+            prefix=f"✅ <b>{day_number}-й день сохранён.</b>\n\n",
         )
         return
 
@@ -1441,13 +1453,11 @@ async def save_goal_day_text(message: types.Message, state: FSMContext) -> None:
         return
 
     next_missing = next((idx for idx, value in enumerate(milestones, 1) if not value), day_number + 1)
-    await state.update_data(editing_day=None)
-    await state.set_state(GoalStates.waiting_day_text)
-    await _answer_private_with_actions(
+    await _show_goal_day_prompt(
         message,
-        "✅ День сохранен. Продолжаем 👇",
-        inline_markup=goal_day_step_keyboard(next_missing),
-        single_message=True,
+        state,
+        next_missing,
+        prefix="✅ <b>День сохранён.</b>\n\n",
     )
 
 
