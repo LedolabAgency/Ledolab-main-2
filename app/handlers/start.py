@@ -461,6 +461,8 @@ async def handle_goal_split_days(query: types.CallbackQuery, state: FSMContext) 
         await query.answer()
         data = await state.get_data()
         goal_text = data.get("goal_text", "")
+        await state.set_state(GoalStates.waiting_day_text)
+        await state.update_data(milestones=[], editing_day=None)
         await _send_goal_route_intro(query, goal_text)
     except Exception as e:
         logger.error("Error in goal_split_days: %s", e, exc_info=True)
