@@ -56,9 +56,10 @@ async def build_referral_invite(bot: Bot, actor: User) -> tuple[str, str]:
         "Не хватает фокуса?\n"
         "Теряешься в задачах, откладываешь важное и буксуешь без системы.\n\n"
         "В LedoLab Business Club — цель, дисциплина и окружение, которое держит в движении 🚀\n\n"
-        "Никто не придёт и не сделает это за тебя. Начни двигаться к своей цели каждый день 👇"
+        "Никто не придёт и не сделает это за тебя. Начни двигаться к своей цели каждый день 👇\n\n"
+        f"{referral_link}"
     )
-    share_url = f"https://t.me/share/url?url={quote(referral_link)}&text={quote(share_text)}"
+    share_url = f"https://t.me/share/url?text={quote(share_text)}"
     text = (
         "💸 <b>Реферальная программа</b>\n\n"
         "Приглашайте предпринимателей в LedoLab Business Club по своей реферальной ссылке.\n\n"

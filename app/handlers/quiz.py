@@ -185,12 +185,14 @@ async def handle_contact_share(message: types.Message) -> None:
         ) if group_url else None,
         parse_mode="HTML",
     )
-    try:
-        await community_service.announce_member_joined(
-            message.bot,
-            telegram_id=message.from_user.id,
-            username=message.from_user.username,
-            first_name=message.from_user.first_name,
-        )
-    except Exception as e:
-        logger.warning("Failed to announce member %s in group: %s", message.from_user.id, e)
+    referral_record = await database.get_referral_by_referred_telegram(message.from_user.id)
+    if not referral_record:
+        try:
+            await community_service.announce_member_joined(
+                message.bot,
+                telegram_id=message.from_user.id,
+                username=message.from_user.username,
+                first_name=message.from_user.first_name,
+            )
+        except Exception as e:
+            logger.warning("Failed to announce member %s in group: %s", message.from_user.id, e)

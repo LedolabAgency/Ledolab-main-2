@@ -251,17 +251,6 @@ async def _send_goal_route_intro(target: types.Message | types.CallbackQuery, go
     else:
         sender = target
 
-    if GOAL_ROUTE_IMAGE.exists():
-        try:
-            await sender.answer_photo(
-                photo=types.FSInputFile(str(GOAL_ROUTE_IMAGE)),
-                caption=caption,
-                reply_markup=goal_day_step_keyboard(1),
-            )
-            return
-        except Exception as exc:
-            logger.warning("Failed to send goal route image: %s", exc)
-
     await sender.answer(caption, reply_markup=goal_day_step_keyboard(1))
 
 
