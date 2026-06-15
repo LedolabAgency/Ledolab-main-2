@@ -786,11 +786,15 @@ async def inline_referral_share(query: types.InlineQuery) -> None:
             description="Отправить приглашение со своей реферальной ссылкой",
             input_message_content=types.InputTextMessageContent(
                 message_text=message_text,
-                link_preview_options=types.LinkPreviewOptions(
-                    url=referral_link,
-                    prefer_large_media=True,
-                    show_above_text=False,
-                ),
+                link_preview_options=types.LinkPreviewOptions(is_disabled=True),
+            ),
+            reply_markup=types.InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [types.InlineKeyboardButton(
+                        text="🚀 Вступить в LedoLab Business Club",
+                        url=referral_link,
+                    )]
+                ]
             ),
         )
         await query.answer([result], cache_time=1, is_personal=True)
