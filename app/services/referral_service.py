@@ -74,6 +74,18 @@ async def build_referral_invite(bot: Bot, actor: User) -> tuple[str, str]:
     return text, share_url
 
 
+def build_referral_inline_text(bot_username: str, referrer_id: int) -> str:
+    """Готовый текст реферального приглашения для inline-режима: текст сверху, ссылка снизу."""
+    referral_link = f"https://t.me/{bot_username}?start=ref_{referrer_id}"
+    return (
+        "Не хватает фокуса?\n"
+        "Теряешься в задачах, откладываешь важное и буксуешь без системы.\n\n"
+        "В LedoLab Business Club — цель, дисциплина и окружение, которое держит в движении 🚀\n\n"
+        "Никто не придёт и не сделает это за тебя. Начни двигаться к своей цели каждый день 👇\n"
+        f"{referral_link}"
+    )
+
+
 async def _resolve_target_group_ids(
     *,
     newbie_telegram_id: int,
