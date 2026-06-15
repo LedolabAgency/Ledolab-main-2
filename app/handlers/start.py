@@ -777,14 +777,20 @@ async def inline_referral_share(query: types.InlineQuery) -> None:
     """Inline-шеринг: отдаёт сообщение с текстом сверху и реферальной ссылкой снизу."""
     try:
         me = await query.bot.get_me()
-        message_text = referral_service.build_referral_inline_text(me.username, query.from_user.id)
+        message_text, referral_link = referral_service.build_referral_inline_content(
+            me.username, query.from_user.id
+        )
         result = types.InlineQueryResultArticle(
             id="referral_invite",
             title="Пригласить друга в LedoLab 🔗",
             description="Отправить приглашение со своей реферальной ссылкой",
             input_message_content=types.InputTextMessageContent(
                 message_text=message_text,
-                link_preview_options=types.LinkPreviewOptions(is_disabled=True),
+                link_preview_options=types.LinkPreviewOptions(
+                    url=referral_link,
+                    prefer_large_media=True,
+                    show_above_text=False,
+                ),
             ),
         )
         await query.answer([result], cache_time=1, is_personal=True)
