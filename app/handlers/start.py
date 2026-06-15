@@ -1421,6 +1421,13 @@ async def handle_goal_text_confirmed(query: types.CallbackQuery, state: FSMConte
         await cache.set_data(cache.KeyManager.get_goal_lock_key(query.from_user.id), "1")
         await cache.delete_data(cache.KeyManager.get_goal_thinking_key(query.from_user.id))
 
+        try:
+            await query.message.answer_video_note(
+                video_note="DQACAgIAAxkBAAIJ2WovIRV-D8EaM36b9EkcM3QmV5VKAAKZnwACSzGASRFzE7wUgPYzPAQ"
+            )
+        except Exception as exc:
+            logger.warning("Failed to send goal confirmed video note: %s", exc)
+
         await query.message.answer(
             "🔥 <b>Цель зафиксирована!</b>\n\n"
             f"<blockquote>{escape(goal_text)}</blockquote>\n\n"
