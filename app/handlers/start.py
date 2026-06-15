@@ -1668,6 +1668,12 @@ async def confirm_goal_flow(query: types.CallbackQuery, state: FSMContext) -> No
             logger.error("Failed to post goal to group: %s", exc, exc_info=True)
 
     me = await query.bot.get_me()
+    try:
+        await query.message.answer_video_note(
+            video_note="DQACAgIAAxkBAAIJ3GovIl7y-TqRnzydfAABRSzrDtx23AACqJ8AAksxgElxbENHNxKwRTwE"
+        )
+    except Exception as exc:
+        logger.warning("Failed to send route confirmed video note: %s", exc)
     await _answer_private_with_actions(
         query,
         "🚀 <b>Готово. Твоя большая цель и 5-дневный маршрут зафиксированы.</b>\n\n"
