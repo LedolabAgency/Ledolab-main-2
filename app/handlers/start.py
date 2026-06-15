@@ -42,6 +42,7 @@ RETURN_GROUP_URL = GROUP_ENTRY_URL or CLUB_GROUP_URL
 KYIV_TZ = ZoneInfo("Europe/Kiev")
 QUIZ_INTRO_IMAGE = Path(__file__).resolve().parents[2] / "assets" / "quiz_intro.png"
 GOAL_ROUTE_IMAGE = Path(__file__).resolve().parents[2] / "assets" / "goal_30_days_flow.png"
+REFERRAL_CARD_PHOTO_ID = "AgACAgIAAxkBAAIKdWowbaW6cU3zHGChGVTZ4Bp8Y0CZAAKUHmsbhDCBSYZ-9klgXBR2AQADAgADeAADPAQ"
 
 
 def _club_now() -> datetime:
@@ -780,14 +781,12 @@ async def inline_referral_share(query: types.InlineQuery) -> None:
         message_text, referral_link = referral_service.build_referral_inline_content(
             me.username, query.from_user.id
         )
-        result = types.InlineQueryResultArticle(
+        result = types.InlineQueryResultCachedPhoto(
             id="referral_invite",
+            photo_file_id=REFERRAL_CARD_PHOTO_ID,
             title="Пригласить друга в LedoLab 🔗",
             description="Отправить приглашение со своей реферальной ссылкой",
-            input_message_content=types.InputTextMessageContent(
-                message_text=message_text,
-                link_preview_options=types.LinkPreviewOptions(is_disabled=True),
-            ),
+            caption=message_text,
             reply_markup=types.InlineKeyboardMarkup(
                 inline_keyboard=[
                     [types.InlineKeyboardButton(
@@ -1738,6 +1737,3 @@ async def temp_get_video_note_file_id(message: types.Message) -> None:
     await message.answer(f"file_id:\n<code>{message.video_note.file_id}</code>", parse_mode="HTML")
 
 
-@router.message(F.from_user.id.in_({516684869, 1118823479}), F.photo, F.chat.type == "private")
-async def temp_get_photo_file_id(message: types.Message) -> None:
-    await message.answer(f"photo file_id:\n<code>{message.photo[-1].file_id}</code>", parse_mode="HTML")
