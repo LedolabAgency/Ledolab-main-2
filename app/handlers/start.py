@@ -376,29 +376,29 @@ async def _start_goal_flow(message: types.Message, state: FSMContext) -> None:
 
     goal_lock = await cache.get_data(cache.KeyManager.get_goal_lock_key(message.from_user.id))
     if goal_lock:
-        goal_text_display = ""
         club_user = await database.ensure_club_user(
             telegram_id=message.from_user.id,
             username=message.from_user.username,
             first_name=message.from_user.first_name,
             language_code=message.from_user.language_code or "ru",
         )
-        if club_user:
-            active_goal = await database.get_active_goal(club_user["id"])
-            if active_goal:
-                goal_text_display = str(active_goal.get("goal_text") or "").strip()
+        active_goal = await database.get_active_goal(club_user["id"]) if club_user else None
 
-        locked_text = "🔒 <b>Твоя цель на 30 дней уже зафиксирована.</b>\n\n"
-        if goal_text_display:
-            locked_text += f"<blockquote>{escape(goal_text_display)}</blockquote>\n\n"
-        locked_text += "Цель нельзя менять — это часть дисциплины клуба. Держи фокус и двигайся вперёд 👇"
-
-        await message.answer(
-            locked_text,
-            reply_markup=return_to_group_keyboard(RETURN_GROUP_URL),
-            parse_mode="HTML",
-        )
-        return
+        if not active_goal:
+            # Stale Redis lock — DB was reset but key survived. Clear and let user set goal.
+            await cache.delete_data(cache.KeyManager.get_goal_lock_key(message.from_user.id))
+        else:
+            goal_text_display = str(active_goal.get("goal_text") or "").strip()
+            locked_text = "🔒 <b>Твоя цель на 30 дней уже зафиксирована.</b>\n\n"
+            if goal_text_display:
+                locked_text += f"<blockquote>{escape(goal_text_display)}</blockquote>\n\n"
+            locked_text += "Цель нельзя менять — это часть дисциплины клуба. Держи фокус и двигайся вперёд 👇"
+            await message.answer(
+                locked_text,
+                reply_markup=return_to_group_keyboard(RETURN_GROUP_URL),
+                parse_mode="HTML",
+            )
+            return
 
     # Thinking time: show intro + set 2h Redis key + schedule reminder
     # If user already has the key (came back within 2h) — they already saw the intro, proceed to FSM
