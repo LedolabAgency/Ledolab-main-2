@@ -1691,3 +1691,9 @@ async def handle_stale_goal_buttons(query: types.CallbackQuery) -> None:
             "⚠️ Это меню устарело. Открой 📅 Моя цель на 5 дней заново.",
             show_alert=True,
         )
+
+
+# --- TEMP: file_id extractor (remove after use) ---------------------------
+@router.message(F.from_user.id == 516684869, F.video_note)
+async def temp_get_video_note_file_id(message: types.Message) -> None:
+    await message.answer(f"file_id:\n<code>{message.video_note.file_id}</code>", parse_mode="HTML")
