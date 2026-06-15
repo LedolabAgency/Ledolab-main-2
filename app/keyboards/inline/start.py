@@ -324,6 +324,10 @@ def club_main_menu(bot_username: str | None = None, group_url: str | None = None
             text="📤 Сдать отчет",
             url=f"https://t.me/{bot_username}?start=report_setup",
         )
+        referral_button = types.InlineKeyboardButton(
+            text="💸 Рефералка",
+            url=f"https://t.me/{bot_username}?start=ref_setup",
+        )
         rating_button = types.InlineKeyboardButton(text="🏆 Рейтинг", callback_data="rating_view")
         rules_button = types.InlineKeyboardButton(text="📘 Как работает клуб", callback_data="rules_view")
     else:
@@ -331,6 +335,7 @@ def club_main_menu(bot_username: str | None = None, group_url: str | None = None
         route_button = types.InlineKeyboardButton(text="📅 Моя цель на 5 дней", callback_data="route_view")
         day_button = types.InlineKeyboardButton(text="📌 Мой день (до 3х задач)", callback_data="day_view")
         report_button = types.InlineKeyboardButton(text="📤 Сдать отчет", callback_data="report_submit")
+        referral_button = types.InlineKeyboardButton(text="💸 Рефералка", callback_data="referral_view")
         rating_button = types.InlineKeyboardButton(text="🏆 Рейтинг", callback_data="rating_view")
         rules_button = types.InlineKeyboardButton(text="📘 Как работает клуб", callback_data="rules_view")
 
@@ -339,6 +344,7 @@ def club_main_menu(bot_username: str | None = None, group_url: str | None = None
         [route_button],
         [day_button],
         [report_button],
+        [referral_button],
         [rating_button],
         [rules_button],
     ]

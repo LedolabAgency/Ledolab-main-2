@@ -777,7 +777,7 @@ async def _show_referral_invite(message: types.Message) -> None:
     
     markup = types.InlineKeyboardMarkup(
         inline_keyboard=[
-            [types.InlineKeyboardButton(text="📢 Поделиться рефералкой", url=share_url)]
+            [types.InlineKeyboardButton(text="🔗 Получить реферальную ссылку", url=share_url)]
         ]
     )
     await message.answer(text, reply_markup=markup, parse_mode="HTML")
@@ -806,6 +806,13 @@ async def cmd_start(
             return
 
         await _delete_private_message_safely(message)
+
+        if args == "ref_setup":
+            await _show_referral_invite(message)
+            return
+
+        if args.startswith("ref_"):
+            await referral_service.capture_referral_start(user_id, args)
 
         if args == "goal_setup" and state:
             await _start_goal_flow(message, state)

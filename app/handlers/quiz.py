@@ -150,6 +150,16 @@ async def handle_contact_share(message: types.Message) -> None:
     await referral_service.bind_pending_referral(message.from_user.id)
 
     try:
+        await referral_service.announce_referred_member_joined(
+            bot=message.bot,
+            newbie_telegram_id=message.from_user.id,
+            newbie_username=message.from_user.username,
+            newbie_first_name=message.from_user.first_name,
+        )
+    except Exception as e:
+        logger.warning("Failed to announce referred member %s: %s", message.from_user.id, e)
+
+    try:
         remove_msg = await message.answer(".", reply_markup=types.ReplyKeyboardRemove())
         await remove_msg.delete()
     except Exception as e:

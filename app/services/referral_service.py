@@ -60,11 +60,16 @@ async def build_referral_invite(bot: Bot, actor: User) -> tuple[str, str]:
     )
     share_url = f"https://t.me/share/url?url={quote(referral_link)}&text={quote(share_text)}"
     text = (
-        "🚀 Рефералка LedoLab Business Club\n\n"
-        f"Твой бонус: +{REFERRER_BONUS} LedoScore\n"
-        f"Новичку: +{NEWBIE_BONUS} LedoScore\n\n"
-        f"Важно: бонусы начисляются только после {REFERRAL_REPORT_THRESHOLD}-го отчета новичка.\n\n"
-        "Нажми кнопку ниже и отправь приглашение 👇"
+        "💸 <b>Реферальная программа</b>\n\n"
+        "Приглашайте предпринимателей в LedoLab Business Club по своей реферальной ссылке.\n\n"
+        "Как это работает:\n\n"
+        "1️⃣ Друг регистрируется по вашей ссылке.\n"
+        "2️⃣ Выполняет условия клуба (сдаёт 3 отчёта).\n"
+        "3️⃣ Вы получаете +100 грн.\n"
+        "4️⃣ Друг получает +100 грн.\n\n"
+        "🔥 Сейчас участие в клубе бесплатно только для первых 100 участников. "
+        "После этого стоимость входа будет увеличиваться х2 каждые 100 юзеров.\n\n"
+        "Чем больше рекомендаций — тем больше вознаграждений."
     )
     return text, share_url
 
@@ -154,6 +159,66 @@ async def _announce_referral_bonus_to_group(
             )
 
 
+async def announce_referred_member_joined(
+    *,
+    bot: Bot,
+    newbie_telegram_id: int,
+    newbie_username: str | None,
+    newbie_first_name: str | None,
+) -> None:
+    """Announce in the group that a referred entrepreneur just joined the club."""
+    referral = await database.get_referral_by_referred_telegram(newbie_telegram_id)
+    if not referral:
+        return
+
+    referrer_telegram_id = int(referral.get("referrer_telegram_id") or 0)
+    if not referrer_telegram_id:
+        return
+
+    target_group_ids = await _resolve_target_group_ids(
+        newbie_telegram_id=newbie_telegram_id,
+        referral=referral,
+    )
+    if not target_group_ids:
+        logger.warning("Referral join announce skipped | newbie=%s reason=no_target_group", newbie_telegram_id)
+        return
+
+    referrer = await database.get_club_user(referrer_telegram_id)
+    referrer_mention = mention_service.build_user_mention(
+        telegram_id=referrer_telegram_id,
+        username=(referrer or {}).get("username"),
+        first_name=(referrer or {}).get("first_name"),
+        fallback="участник клуба",
+    )
+    newbie_mention = mention_service.build_user_mention(
+        telegram_id=newbie_telegram_id,
+        username=newbie_username,
+        first_name=newbie_first_name,
+        fallback="новый предприниматель",
+    )
+
+    text = (
+        "🤝 <b>Новый бизнес-партнёр в клубе!</b>\n\n"
+        f"{referrer_mention} привёл нового предпринимателя — {newbie_mention}.\n\n"
+        f"Как только новичок сдаст свой {REFERRAL_REPORT_THRESHOLD}-й отчёт — оба получат\n"
+        f"LedoScore (+{REFERRER_BONUS} / +{NEWBIE_BONUS}) и по 100 грн 🔥\n\n"
+        "Сильное окружение растит сильных. Поддержите новенького 💪"
+    )
+
+    for target_group_id in target_group_ids:
+        try:
+            await bot.send_message(target_group_id, text, parse_mode="HTML")
+            logger.info("Referral join announced | newbie=%s chat=%s", newbie_telegram_id, target_group_id)
+            return
+        except Exception as e:
+            logger.warning(
+                "Referral join announce failed | newbie=%s chat=%s error=%s",
+                newbie_telegram_id,
+                target_group_id,
+                e,
+            )
+
+
 async def process_referral_after_report(
     *,
     bot: Bot,
@@ -183,11 +248,20 @@ async def process_referral_after_report(
     await database.award_score(referred_user_id, NEWBIE_BONUS, "Referral welcome bonus after 3rd report")
     await database.mark_referral_bonus_awarded(hydrated["id"], reports_completed)
 
+    newbie = await database.get_club_user(newbie_telegram_id)
+    newbie_mention = mention_service.build_user_mention(
+        telegram_id=newbie_telegram_id,
+        username=(newbie or {}).get("username"),
+        first_name=(newbie or {}).get("first_name"),
+        fallback="твой реферал",
+    )
     try:
         await bot.send_message(
             int(hydrated["referrer_telegram_id"]),
-            f"🔥 Твой реферал закрыл {REFERRAL_REPORT_THRESHOLD}-й отчет.\n"
-            f"Тебе начислено +{REFERRER_BONUS} LedoScore.",
+            f"🔥 Твой реферал {newbie_mention} сдал {REFERRAL_REPORT_THRESHOLD}-й отчёт!\n\n"
+            f"За это тебе начислено +{REFERRER_BONUS} LedoScore, твоему рефералу +{NEWBIE_BONUS}.\n"
+            "И вам обоим — по 100 грн 💰",
+            parse_mode="HTML",
         )
     except Exception as e:
         logger.warning("Failed to notify referrer %s: %s", hydrated.get("referrer_telegram_id"), e)
