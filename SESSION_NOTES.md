@@ -51,6 +51,25 @@
 - `app/keyboards/inline/start.py` — все клавиатуры.
 - `app/cache.py` — Redis KeyManager (goal_lock, goal_day_lock, day_plan_lock, streak и т.д.).
 
+## Сделано в сессии 15.06 (всё в feature/add-config)
+1. **Извлечение file_id с кружочка/фото** — временные хендлеры (приватный чат, фильтр `F.chat.type == "private"`). **Оба временных перехватчика уже удалены.**
+2. **Видео-кружки на экранах цели/маршрута** — file_id вставлены перед «🔥 Цель зафиксирована!» (`DQACAgIAAxkBAAIJ2WovIRV-D8EaM36b9EkcM3QmV5VKAAKZnwACSzGASRFzE7wUgPYzPAQ`) и перед «🚀 Готово…» (`DQACAgIAAxkBAAIJ3GovIl7y-TqRnzydfAABRSzrDtx23AACqJ8AAksxgElxbENHNxKwRTwE`).
+3. **Залипший goal_lock после ресета БД** — Redis-ключ `goal_lock` (TTL 30 дней) переживал сброс БД. Фикс в `_start_goal_flow`: проверяем активную цель в БД, если её нет — удаляем устаревший Redis-ключ.
+4. **Рефералка — полный фикс (была сломана целиком):**
+   - `capture_referral_start` никогда не вызывался → добавили в `cmd_start`: `if args.startswith("ref_"): await referral_service.capture_referral_start(...)`.
+   - `?start=ref_setup` вёл в никуда → добавили `if args == "ref_setup": await _show_referral_invite(...)`.
+   - Кнопка «💸 Рефералка» в `club_main_menu` (`app/keyboards/inline/start.py`).
+   - Объявление в группу при входе реферала: `referral_service.announce_referred_member_joined()`.
+   - **Дубль смс в группу** — `handle_contact_share` слал И реферальное объявление, И generic `community_service.announce_member_joined`. Фикс: generic шлём только если юзер НЕ реферал (проверка `get_referral_by_referred_telegram`).
+   - **Картинка перед маршрутом** (`_send_goal_route_intro`, `GOAL_ROUTE_IMAGE`) — убрана, шлём только текст.
+5. **Реферальный шеринг через inline-режим (итоговый вид):**
+   - Включён Inline Mode в @BotFather (`/setinline`, placeholder «Пригласить друга 🔗»). Без этого код не работает.
+   - Кнопка «🔗 Получить реферальную ссылку» = `switch_inline_query=""` (НЕ `t.me/share/url`).
+   - Inline-хендлер `inline_referral_share` (start.py) отдаёт `InlineQueryResultCachedPhoto`: фото-карточка LedoLab + подпись (текст из `referral_service.build_referral_inline_content`) + инлайн-кнопка «🚀 Вступить в LedoLab Business Club» (url = реф-ссылка).
+   - **file_id картинки карточки:** `REFERRAL_CARD_PHOTO_ID = "AgACAgIAAxkBAAIKdWowbaW6cU3zHGChGVTZ4Bp8Y0CZAAKUHmsbhDCBSYZ-9klgXBR2AQADAgADeAADPAQ"` (константа вверху start.py).
+   - **Почему так (ограничения Telegram):** превью для bot-ссылки `?start=ref_X` Telegram НЕ генерирует. `t.me/share/url` требует `url=` для открытия списка контактов и всегда лепит ссылку ПЕРВОЙ строкой (вниз не убрать). Inline-режим даёт фото+текст+кнопку, но требует 2 тапа (выбрать чат → тапнуть результат) — поведение Telegram, убрать нельзя. Решили оставить красивую карточку с двойным тапом.
+   - Профиль бота: юзер настроил `/setdescription` (текст про клуб) — видно ПОСЛЕ перехода в бота, к реф-смс отношения не имеет.
+
 ## Открытые/возможные следующие задачи
 - Кнопка прыжка на закреплённое меню в группе (обсуждали, не делали).
 - Рефакторинг `start.py` (юзер хотел разбить файл на части, отложили «на потом»).
