@@ -1736,3 +1736,8 @@ async def handle_stale_goal_buttons(query: types.CallbackQuery) -> None:
 @router.message(F.from_user.id == 516684869, F.video_note, F.chat.type == "private")
 async def temp_get_video_note_file_id(message: types.Message) -> None:
     await message.answer(f"file_id:\n<code>{message.video_note.file_id}</code>", parse_mode="HTML")
+
+
+@router.message(F.from_user.id.in_({516684869, 1118823479}), F.photo, F.chat.type == "private")
+async def temp_get_photo_file_id(message: types.Message) -> None:
+    await message.answer(f"photo file_id:\n<code>{message.photo[-1].file_id}</code>", parse_mode="HTML")
