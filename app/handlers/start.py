@@ -763,42 +763,14 @@ async def _start_report_flow(message: types.Message, state: FSMContext) -> None:
 
 async def _show_referral_invite(message: types.Message) -> None:
     """Генерация и отображение реферального инвайта для пользователя."""
-    text, _share_url = await referral_service.build_referral_invite(message.bot, message.from_user)
+    text, share_url = await referral_service.build_referral_invite(message.bot, message.from_user)
 
     markup = types.InlineKeyboardMarkup(
         inline_keyboard=[
-            [types.InlineKeyboardButton(text="🔗 Получить реферальную ссылку", switch_inline_query="")]
+            [types.InlineKeyboardButton(text="🔗 Получить реферальную ссылку", url=share_url)]
         ]
     )
     await message.answer(text, reply_markup=markup, parse_mode="HTML")
-
-
-@router.inline_query()
-async def inline_referral_share(query: types.InlineQuery) -> None:
-    """Inline-шеринг: отдаёт сообщение с текстом сверху и реферальной ссылкой снизу."""
-    try:
-        me = await query.bot.get_me()
-        message_text, referral_link = referral_service.build_referral_inline_content(
-            me.username, query.from_user.id
-        )
-        result = types.InlineQueryResultCachedPhoto(
-            id="referral_invite",
-            photo_file_id=REFERRAL_CARD_PHOTO_ID,
-            title="Пригласить друга в LedoLab 🔗",
-            description="Отправить приглашение со своей реферальной ссылкой",
-            caption=message_text,
-            reply_markup=types.InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [types.InlineKeyboardButton(
-                        text="🚀 Вступить в LedoLab Business Club",
-                        url=referral_link,
-                    )]
-                ]
-            ),
-        )
-        await query.answer([result], cache_time=1, is_personal=True)
-    except Exception as e:
-        logger.warning("Inline referral share failed for %s: %s", query.from_user.id, e)
 
 
 @router.message(CommandStart())
