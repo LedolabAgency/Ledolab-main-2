@@ -1438,6 +1438,89 @@ async def get_admin_analytics(today: str) -> Dict[str, int]:
         }
 
 
+async def get_users_with_today_tasks(today: str) -> List[Dict[str, Any]]:
+    """Return active club users together with their task texts for today."""
+    try:
+        sb = get_supabase()
+        task_rows = (
+            sb.table("daily_tasks")
+            .select("user_id,task_text,task_type")
+            .eq("date", today)
+            .in_("task_type", ["day_1", "day_2", "day_3"])
+            .execute()
+        ).data or []
+        if not task_rows:
+            return []
+        user_tasks: dict[str, list[str]] = {}
+        for row in task_rows:
+            uid = row["user_id"]
+            if uid not in user_tasks:
+                user_tasks[uid] = []
+            if row.get("task_text"):
+                user_tasks[uid].append(row["task_text"])
+        user_ids = list(user_tasks.keys())
+        users = (
+            sb.table("users")
+            .select("id,telegram_id,username,first_name,is_banned")
+            .in_("id", user_ids)
+            .execute()
+        ).data or []
+        return [
+            {**u, "tasks": user_tasks.get(u["id"], [])}
+            for u in users
+            if not u.get("is_banned")
+        ]
+    except Exception as e:
+        logger.error("Error in get_users_with_today_tasks %s: %s", today, e, exc_info=True)
+        return []
+
+
+async def get_users_with_tasks_no_report(today: str) -> List[Dict[str, Any]]:
+    """Return users who have tasks today but haven't submitted a report yet."""
+    try:
+        sb = get_supabase()
+        task_rows = (
+            sb.table("daily_tasks")
+            .select("user_id,task_text,task_type")
+            .eq("date", today)
+            .in_("task_type", ["day_1", "day_2", "day_3"])
+            .execute()
+        ).data or []
+        if not task_rows:
+            return []
+        user_tasks: dict[str, list[str]] = {}
+        for row in task_rows:
+            uid = row["user_id"]
+            if uid not in user_tasks:
+                user_tasks[uid] = []
+            if row.get("task_text"):
+                user_tasks[uid].append(row["task_text"])
+        report_rows = (
+            sb.table("daily_reports")
+            .select("user_id")
+            .eq("report_date", today)
+            .execute()
+        ).data or []
+        reported_ids = {row["user_id"] for row in report_rows}
+        need_reminder = [uid for uid in user_tasks if uid not in reported_ids]
+        if not need_reminder:
+            return []
+        users = (
+            sb.table("users")
+            .select("id,telegram_id,username,first_name,is_banned")
+            .in_("id", need_reminder)
+            .execute()
+        ).data or []
+        return [
+            {**u, "tasks": user_tasks.get(u["id"], [])}
+            for u in users
+            if not u.get("is_banned")
+        ]
+    except Exception as e:
+        logger.error("Error in get_users_with_tasks_no_report %s: %s", today, e, exc_info=True)
+        return []
+
+
 async def mark_daily_status(user_id: str, status_date: str, status: str) -> bool:
     """Persist a neutral or failed day marker."""
     try:

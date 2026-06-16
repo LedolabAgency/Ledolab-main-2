@@ -197,24 +197,61 @@ async def announce_member_joined(
     )
 
 
-async def send_report_deadline_reminder(bot: Bot, now: datetime | None = None) -> None:
-    if not REPORTS_GROUP_ID:
-        return
-
+async def send_morning_private_reminders(bot: Bot, now: datetime | None = None) -> None:
+    """08:30 — личный пуш каждому юзеру с задачами на сегодня."""
     now = now or datetime.now(KYIV_TZ)
-    if not _is_active_report_window(now):
-        return
+    today = now.date().isoformat()
+    users = await database.get_users_with_today_tasks(today)
+    me = await bot.get_me()
+    bot_username = me.username or ""
+    for user in users:
+        tg_id = int(user.get("telegram_id") or 0)
+        if not tg_id:
+            continue
+        dedupe_key = f"morning_push:{tg_id}:{today}"
+        if await cache.get_data(dedupe_key):
+            continue
+        tasks = user.get("tasks", [])
+        name = user.get("first_name") or "друг"
+        task_lines = "\n".join(f"• {t}" for t in tasks) if tasks else ""
+        text = (
+            f"☀️ Доброе утро, {name}!\n\n"
+            + (f"Твои задачи на сегодня:\n{task_lines}\n\n" if task_lines else "")
+            + "Держи ритм и закрой день сильным отчётом 💪"
+        )
+        try:
+            await bot.send_message(tg_id, text)
+            await cache.set_data(dedupe_key, "1", ex=20 * 60 * 60)
+        except Exception as e:
+            logger.warning("Morning push failed | user=%s error=%s", tg_id, e)
 
-    analytics = await database.get_admin_analytics(now.date().isoformat())
-    missing_reports = max(int(analytics.get("missing_reports_today", 0)), 0)
-    intro = _pick_phrase(DEADLINE_REMINDER_PHRASES, now)
-    text = (
-        f"{intro}\n\n"
-        f"Сегодня без отчета еще {missing_reports} участ.\n"
-        "Кто двигается — тот фиксирует результат.\n"
-        "До 22:00 закрой день, сдай отчет и забери свой LedoScore 🔥"
-    )
-    await bot.send_message(REPORTS_GROUP_ID, text)
+
+async def send_personal_evening_reminders(bot: Bot, now: datetime | None = None) -> None:
+    """21:00 — личный пуш тем, кто поставил задачи, но ещё не сдал отчёт."""
+    now = now or datetime.now(KYIV_TZ)
+    today = now.date().isoformat()
+    users = await database.get_users_with_tasks_no_report(today)
+    for user in users:
+        tg_id = int(user.get("telegram_id") or 0)
+        if not tg_id:
+            continue
+        dedupe_key = f"evening_push:{tg_id}:{today}"
+        if await cache.get_data(dedupe_key):
+            continue
+        tasks = user.get("tasks", [])
+        name = user.get("first_name") or "друг"
+        task_lines = "\n".join(f"• {t}" for t in tasks) if tasks else ""
+        text = (
+            f"🌙 {name}, осталось меньше часа!\n\n"
+            + (f"Твои задачи сегодня:\n{task_lines}\n\n" if task_lines else "")
+            + "Отчёт ещё не сдан ⏰\n"
+            "Закрой день — ты почти там 💪"
+        )
+        try:
+            await bot.send_message(tg_id, text)
+            await cache.set_data(dedupe_key, "1", ex=6 * 60 * 60)
+        except Exception as e:
+            logger.warning("Evening personal push failed | user=%s error=%s", tg_id, e)
 
 
 async def send_midday_reminder(bot: Bot, now: datetime | None = None) -> None:
@@ -224,7 +261,7 @@ async def send_midday_reminder(bot: Bot, now: datetime | None = None) -> None:
     now = now or datetime.now(KYIV_TZ)
     if not _is_active_report_window(now):
         return
-    if now.hour != 12:
+    if now.hour != 13:
         return
 
     text = (
@@ -235,33 +272,19 @@ async def send_midday_reminder(bot: Bot, now: datetime | None = None) -> None:
     await bot.send_message(REPORTS_GROUP_ID, text)
 
 
-async def send_day_reminder(bot: Bot, now: datetime | None = None) -> None:
+async def send_evening_group_post(bot: Bot, now: datetime | None = None) -> None:
+    """20:00 — один вечерний пост в группу: мотивация + сколько без отчёта + топ-3."""
     if not REPORTS_GROUP_ID:
         return
 
     now = now or datetime.now(KYIV_TZ)
     if not _is_active_report_window(now):
         return
-    if now.hour != 15:
+    if now.hour != 20:
         return
 
-    text = (
-        f"{_pick_phrase(DAY_REMINDER_PHRASES, now)}\n\n"
-        "Если хочешь сильный вечер — собери его уже сейчас.\n"
-        "Один собранный шаг днем сильно меняет картину дня 🚀"
-    )
-    await bot.send_message(REPORTS_GROUP_ID, text)
-
-
-async def send_evening_checkup(bot: Bot, now: datetime | None = None) -> None:
-    if not REPORTS_GROUP_ID:
-        return
-
-    now = now or datetime.now(KYIV_TZ)
-    if not _is_active_report_window(now):
-        return
-    if now.hour != 21:
-        return
+    analytics = await database.get_admin_analytics(now.date().isoformat())
+    missing_reports = max(int(analytics.get("missing_reports_today", 0)), 0)
 
     top_users = await rating_service.get_rating_leaderboard(limit=3)
     medal_lines = []
@@ -276,24 +299,21 @@ async def send_evening_checkup(bot: Bot, now: datetime | None = None) -> None:
         telegram_id = int(user.get("telegram_id") or 0)
         path_day_number = int((await cache.get_data(cache.KeyManager.get_streak_key(telegram_id))) or 0)
         path_day_number = ((path_day_number - 1) % 5) + 1 if path_day_number > 0 else 0
-        medal_lines.extend(
-            [
-                f"{medals[idx - 1]} {user_label} — {int(user.get('total_score', 0))} LedoScore",
-                f"   📈 Путь: {path_day_number}/5" if path_day_number else "   📈 Путь: еще не начат",
-            ]
-        )
+        medal_lines.extend([
+            f"{medals[idx - 1]} {user_label} — {int(user.get('total_score', 0))} LedoScore",
+            f"   📈 Путь: {path_day_number}/5" if path_day_number else "   📈 Путь: ещё не начат",
+        ])
+
     top_block = "\n".join(medal_lines)
     intro = _pick_phrase(EVENING_REMINDER_PHRASES, now)
     text = (
         f"{intro}\n\n"
-        "До 22:00 еще можно закрыть день и зафиксировать LedoScore.\n"
-        "Кто уже сдал отчет — держит темп. Кто еще в тишине — сейчас лучшее время не терять ритм 🔥\n\n"
+        f"До 22:00 ещё можно закрыть день. Без отчёта: {missing_reports} чел.\n\n"
         + (
             "🏆 ТОП-3 СЕЙЧАС:\n\n" + top_block
             if top_block
-            else "🏆 Пока топ не сформирован, но вечер уже зовет закрывать день сильным финишем."
+            else "🏆 Рейтинг формируется — закрой день первым сильным финишем."
         )
-        + "\n\n📈 Твой путь сегодня: не теряй темп и закрой день сильным отчетом."
     )
     await bot.send_message(REPORTS_GROUP_ID, text, parse_mode="HTML")
 
