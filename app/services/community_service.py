@@ -9,7 +9,8 @@ from zoneinfo import ZoneInfo
 from aiogram import Bot
 
 from app import cache, database
-from app.config import REPORTS_GROUP_ID
+from app.config import CLUB_GROUP_URL, REPORTS_GROUP_ID
+from app.keyboards.inline.start import group_menu_keyboard
 from app.services import mention_service, rating_service
 
 logger = logging.getLogger(__name__)
@@ -269,7 +270,7 @@ async def send_midday_reminder(bot: Bot, now: datetime | None = None) -> None:
         "Если день уже начался — не отпускай его в хаос.\n"
         "Сейчас хороший момент вернуть фокус и сделать один сильный шаг 🔥"
     )
-    await bot.send_message(REPORTS_GROUP_ID, text)
+    await bot.send_message(REPORTS_GROUP_ID, text, reply_markup=group_menu_keyboard(CLUB_GROUP_URL))
 
 
 async def send_evening_group_post(bot: Bot, now: datetime | None = None) -> None:
@@ -315,7 +316,12 @@ async def send_evening_group_post(bot: Bot, now: datetime | None = None) -> None
             else "🏆 Рейтинг формируется — закрой день первым сильным финишем."
         )
     )
-    await bot.send_message(REPORTS_GROUP_ID, text, parse_mode="HTML")
+    await bot.send_message(
+        REPORTS_GROUP_ID,
+        text,
+        parse_mode="HTML",
+        reply_markup=group_menu_keyboard(CLUB_GROUP_URL),
+    )
 
 
 async def send_weekly_final(bot: Bot, now: datetime | None = None) -> None:

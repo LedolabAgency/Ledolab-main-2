@@ -255,6 +255,17 @@ def back_to_group_keyboard(group_url: str | None = None) -> types.InlineKeyboard
     )
 
 
+def group_menu_keyboard(group_url: str | None = None) -> types.InlineKeyboardMarkup | None:
+    """Jump-to-pinned-menu button for posts sent inside the group itself."""
+    if not group_url:
+        return None
+    return types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [types.InlineKeyboardButton(text="📌 Меню клуба", url=group_url)]
+        ]
+    )
+
+
 def goal_ready_keyboard() -> types.InlineKeyboardMarkup:
     """Ask whether the user is ready to start today."""
     return types.InlineKeyboardMarkup(
