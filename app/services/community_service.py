@@ -10,7 +10,7 @@ from aiogram import Bot
 
 from app import cache, database
 from app.config import CLUB_GROUP_URL, REPORTS_GROUP_ID
-from app.keyboards.inline.start import group_menu_keyboard
+from app.keyboards.inline.start import back_to_group_keyboard, group_menu_keyboard
 from app.services import mention_service, rating_service
 
 logger = logging.getLogger(__name__)
@@ -221,7 +221,7 @@ async def send_morning_private_reminders(bot: Bot, now: datetime | None = None) 
             + "Держи ритм и закрой день сильным отчётом 💪"
         )
         try:
-            await bot.send_message(tg_id, text)
+            await bot.send_message(tg_id, text, reply_markup=back_to_group_keyboard(CLUB_GROUP_URL))
             await cache.set_data(dedupe_key, "1", ex=20 * 60 * 60)
         except Exception as e:
             logger.warning("Morning push failed | user=%s error=%s", tg_id, e)
@@ -249,7 +249,7 @@ async def send_personal_evening_reminders(bot: Bot, now: datetime | None = None)
             "Закрой день — ты почти там 💪"
         )
         try:
-            await bot.send_message(tg_id, text)
+            await bot.send_message(tg_id, text, reply_markup=back_to_group_keyboard(CLUB_GROUP_URL))
             await cache.set_data(dedupe_key, "1", ex=6 * 60 * 60)
         except Exception as e:
             logger.warning("Evening personal push failed | user=%s error=%s", tg_id, e)
