@@ -432,24 +432,6 @@ async def show_rating(query: types.CallbackQuery) -> None:
     await query.answer("Рейтинг обновлен.")
 
 
-@router.message(F.text == "🏆 Рейтинг")
-async def show_rating_from_text(message: types.Message) -> None:
-    if message.chat.type == "private":
-        await message.answer("Рейтинг живет в группе LedoLab Business Club.")
-        return
-    if not await database.has_completed_quiz(message.from_user.id):
-        me = await message.bot.get_me()
-        await message.answer(
-            "🧭 Сначала пройди квиз в боте, а потом уже смотри рейтинг 👇",
-            reply_markup=open_bot_keyboard(me.username, "start", "🚀 ПРОЙТИ КВИЗ В БОТЕ"),
-        )
-        return
-
-    users = await rating_service.get_rating_leaderboard()
-    text = await rating_service.format_rating_text(users, viewer_telegram_id=message.from_user.id)
-    await message.answer(text)
-
-
 @router.callback_query(F.data.startswith("report_vote:"))
 async def vote_for_report(query: types.CallbackQuery) -> None:
     if not await _ensure_group_callback(query):
