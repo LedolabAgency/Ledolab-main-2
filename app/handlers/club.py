@@ -409,11 +409,21 @@ async def open_detail_view(query: types.CallbackQuery) -> None:
     await query.answer()
 
 
+RATING_VIEW_THROTTLE_SECONDS = 10 * 60
+
+
 @router.callback_query(F.data == "rating_view")
 async def show_rating(query: types.CallbackQuery) -> None:
     if not await _ensure_group_callback(query):
         return
     if not await _ensure_quiz_for_query(query):
+        return
+
+    if not await cache.acquire_lock("rating_view_throttle", ex=RATING_VIEW_THROTTLE_SECONDS):
+        await query.answer(
+            "Рейтинг можно смотреть раз в 10 минут.\nПоследний рейтинг уже есть выше в чате — прокрути сообщения вверх 👆",
+            show_alert=True,
+        )
         return
 
     users = await rating_service.get_rating_leaderboard()
