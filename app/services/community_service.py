@@ -10,7 +10,7 @@ from aiogram import Bot
 
 from app import cache, database
 from app.config import CLUB_GROUP_URL, REPORTS_GROUP_ID
-from app.keyboards.inline.start import back_to_group_keyboard, group_menu_keyboard
+from app.keyboards.inline.start import back_to_group_keyboard
 from app.services import mention_service, rating_service
 
 logger = logging.getLogger(__name__)
@@ -68,6 +68,13 @@ def _pick_phrase(phrases: list[str], now: datetime) -> str:
     seed = f"{now.date().isoformat()}:{now.hour}:{now.minute}"
     rng = random.Random(seed)
     return rng.choice(phrases)
+
+
+def _menu_link_line() -> str:
+    """Кликабельная текстовая ссылка на закреплённое меню (работает в приватной группе у участников, в отличие от инлайн-кнопки)."""
+    if not CLUB_GROUP_URL:
+        return ""
+    return f"\n\n📌 <a href=\"{CLUB_GROUP_URL}\">Меню клуба</a>"
 
 
 def _week_window(now: datetime) -> tuple[datetime, datetime]:
@@ -269,8 +276,9 @@ async def send_midday_reminder(bot: Bot, now: datetime | None = None) -> None:
         f"{_pick_phrase(MIDDAY_REMINDER_PHRASES, now)}\n\n"
         "Если день уже начался — не отпускай его в хаос.\n"
         "Сейчас хороший момент вернуть фокус и сделать один сильный шаг 🔥"
+        + _menu_link_line()
     )
-    await bot.send_message(REPORTS_GROUP_ID, text, reply_markup=group_menu_keyboard(CLUB_GROUP_URL))
+    await bot.send_message(REPORTS_GROUP_ID, text, parse_mode="HTML")
 
 
 async def send_evening_group_post(bot: Bot, now: datetime | None = None) -> None:
@@ -315,12 +323,12 @@ async def send_evening_group_post(bot: Bot, now: datetime | None = None) -> None
             if top_block
             else "🏆 Рейтинг формируется — закрой день первым сильным финишем."
         )
+        + _menu_link_line()
     )
     await bot.send_message(
         REPORTS_GROUP_ID,
         text,
         parse_mode="HTML",
-        reply_markup=group_menu_keyboard(CLUB_GROUP_URL),
     )
 
 
