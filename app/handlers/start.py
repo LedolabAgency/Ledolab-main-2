@@ -628,10 +628,13 @@ async def _start_day_flow(message: types.Message, state: FSMContext) -> None:
 
     active_goal = await database.get_active_goal(user["id"])
     if not active_goal:
-        await message.answer(
+        no_goal_text = (
             "🎯 Сначала зафиксируй большую цель на 30 дней.\n\n"
             "Без неё мы не сможем собрать сильный день, который реально двигает тебя вперёд."
         )
+        if RETURN_GROUP_URL:
+            no_goal_text += f"\n\n📌 <a href=\"{RETURN_GROUP_URL}\">Меню клуба</a>"
+        await message.answer(no_goal_text, parse_mode="HTML")
         return
 
     current_streak = int((await cache.get_data(cache.KeyManager.get_streak_key(message.from_user.id))) or 0)
