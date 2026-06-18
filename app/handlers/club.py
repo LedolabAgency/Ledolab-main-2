@@ -421,7 +421,7 @@ async def show_rating(query: types.CallbackQuery) -> None:
 
     if not await cache.acquire_lock("rating_view_throttle", ex=RATING_VIEW_THROTTLE_SECONDS):
         await query.answer(
-            "Рейтинг можно смотреть раз в 10 минут.\nПоследний рейтинг уже есть выше в чате — прокрути сообщения вверх 👆",
+            "Рейтинг можно смотреть раз в 10 минут.\nПоследний рейтинг уже есть ниже в чате — прокрути сообщения вниз 👇",
             show_alert=True,
         )
         return
