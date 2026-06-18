@@ -764,13 +764,17 @@ async def _start_report_flow(message: types.Message, state: FSMContext) -> None:
     )
 
 
+REFERRAL_GROUP_INVITE_URL = "https://t.me/+WzcCVTajwSozNzYy"
+
+
 async def _show_referral_invite(message: types.Message) -> None:
     """Генерация и отображение реферального инвайта для пользователя."""
     text, share_url = await referral_service.build_referral_invite(message.bot, message.from_user)
 
     markup = types.InlineKeyboardMarkup(
         inline_keyboard=[
-            [types.InlineKeyboardButton(text="🔗 Получить реферальную ссылку", url=share_url)]
+            [types.InlineKeyboardButton(text="🔗 Получить реферальную ссылку", url=share_url)],
+            [types.InlineKeyboardButton(text="↩️ Вернуться в группу", url=REFERRAL_GROUP_INVITE_URL)],
         ]
     )
     await message.answer(text, reply_markup=markup, parse_mode="HTML")
