@@ -765,10 +765,18 @@ async def _start_report_flow(message: types.Message, state: FSMContext) -> None:
 
 
 REFERRAL_GROUP_INVITE_URL = "https://t.me/+WzcCVTajwSozNzYy"
+REFERRAL_THROTTLE_SECONDS = 10 * 60
 
 
 async def _show_referral_invite(message: types.Message) -> None:
     """Генерация и отображение реферального инвайта для пользователя."""
+    if not await cache.acquire_lock(f"referral_throttle:{message.from_user.id}", ex=REFERRAL_THROTTLE_SECONDS):
+        await message.answer(
+            "⏳ Ты уже получал реферальную ссылку. Она выше в этом чате ⬆️\n"
+            "Новую можно запросить через 10 минут."
+        )
+        return
+
     text, share_url = await referral_service.build_referral_invite(message.bot, message.from_user)
 
     markup = types.InlineKeyboardMarkup(
