@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 from aiogram import Bot
 
 from app import cache, database
-from app.config import CLUB_GROUP_URL, REPORTS_GROUP_ID
+from app.config import CLUB_MENU_URL, REPORTS_GROUP_ID
 from app.services import mention_service, rating_service
 
 logger = logging.getLogger(__name__)
@@ -71,9 +71,9 @@ def _pick_phrase(phrases: list[str], now: datetime) -> str:
 
 def _menu_link_line() -> str:
     """Кликабельная текстовая ссылка на закреплённое меню (работает в приватной группе у участников, в отличие от инлайн-кнопки)."""
-    if not CLUB_GROUP_URL:
+    if not CLUB_MENU_URL:
         return ""
-    return f"\n\n📌 <a href=\"{CLUB_GROUP_URL}\">Меню клуба</a>"
+    return f"\n\n📌 <a href=\"{CLUB_MENU_URL}\">Меню клуба</a>"
 
 
 def _week_window(now: datetime) -> tuple[datetime, datetime]:

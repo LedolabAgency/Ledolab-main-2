@@ -14,7 +14,7 @@ from aiogram.fsm.context import FSMContext
 
 from app import cache, database
 from app.services import referral_service, report_service, mention_service
-from app.config import CLUB_GROUP_URL, GROUP_ENTRY_URL, REPORTS_GROUP_ID, WEB_APP_URL
+from app.config import CLUB_GROUP_URL, CLUB_MENU_URL, GROUP_ENTRY_URL, REPORTS_GROUP_ID, WEB_APP_URL
 from app.keyboards.inline.start import (
     after_goal_confirm_keyboard,
     back_to_group_keyboard,
@@ -632,8 +632,8 @@ async def _start_day_flow(message: types.Message, state: FSMContext) -> None:
             "🎯 Сначала зафиксируй большую цель на 30 дней.\n\n"
             "Без неё мы не сможем собрать сильный день, который реально двигает тебя вперёд."
         )
-        if RETURN_GROUP_URL:
-            no_goal_text += f"\n\n📌 <a href=\"{RETURN_GROUP_URL}\">Меню клуба</a>"
+        if CLUB_MENU_URL:
+            no_goal_text += f"\n\n📌 <a href=\"{CLUB_MENU_URL}\">Меню клуба</a>"
         await message.answer(no_goal_text, parse_mode="HTML")
         return
 
