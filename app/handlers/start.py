@@ -812,12 +812,23 @@ async def cmd_start(
 
         await _delete_private_message_safely(message)
 
+        if args.startswith("ref_") and args != "ref_setup":
+            await referral_service.capture_referral_start(user_id, args)
+
+        has_quiz = await database.has_completed_quiz(user_id)
+
+        if not has_quiz:
+            # Новый юзер мог зайти через любую кнопку диплинка (цель/маршрут/
+            # день/отчет/рефералка из закрепа группы) — для всех них показываем
+            # один и тот же интро-экран с квизом, а не урезанные напоминания
+            # внутри отдельных флоу.
+            await _send_quiz_intro(message)
+            logger.info(f"New user: {user_id}")
+            return
+
         if args == "ref_setup":
             await _show_referral_invite(message)
             return
-
-        if args.startswith("ref_"):
-            await referral_service.capture_referral_start(user_id, args)
 
         if args == "goal_setup" and state:
             await _start_goal_flow(message, state)
@@ -835,18 +846,12 @@ async def cmd_start(
             await _start_route_flow(message, state)
             return
 
-        has_quiz = await database.has_completed_quiz(user_id)
-        if has_quiz:
-            await message.answer(
-                "✅ <b>Ты уже в LedoLab Business Club.</b>\n\n"
-                "Переходи в группу — там закреплено всё рабочее меню 👇",
-                reply_markup=return_to_group_keyboard(RETURN_GROUP_URL),
-                parse_mode="HTML",
-            )
-            return
-
-        await _send_quiz_intro(message)
-        logger.info(f"New user: {user_id}")
+        await message.answer(
+            "✅ <b>Ты уже в LedoLab Business Club.</b>\n\n"
+            "Переходи в группу — там закреплено всё рабочее меню 👇",
+            reply_markup=return_to_group_keyboard(RETURN_GROUP_URL),
+            parse_mode="HTML",
+        )
 
     except Exception as e:
         logger.error(f"Error: {e}", exc_info=True)
