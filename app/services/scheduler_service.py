@@ -9,7 +9,6 @@ from aiogram import Bot
 
 from app import cache
 from app.services import community_service
-from app.services.alert_service import notify_admins_about_error
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +79,6 @@ async def _loop(bot: Bot) -> None:
             raise
         except Exception as e:
             logger.error("Scheduler tick failed: %s", e, exc_info=True)
-            await notify_admins_about_error(bot, "scheduler.tick", e)
         await asyncio.sleep(30)
 
 
