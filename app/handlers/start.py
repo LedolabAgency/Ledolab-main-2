@@ -9,6 +9,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from aiogram import F, Router, types
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
 
@@ -43,6 +44,7 @@ KYIV_TZ = ZoneInfo("Europe/Kiev")
 QUIZ_INTRO_IMAGE = Path(__file__).resolve().parents[2] / "assets" / "quiz_intro.png"
 GOAL_ROUTE_IMAGE = Path(__file__).resolve().parents[2] / "assets" / "goal_30_days_flow.png"
 REFERRAL_CARD_PHOTO_ID = "AgACAgIAAxkBAAIKdWowbaW6cU3zHGChGVTZ4Bp8Y0CZAAKUHmsbhDCBSYZ-9klgXBR2AQADAgADeAADPAQ"
+REPORT_PROOF_WINDOW_SECONDS = 5 * 60
 
 
 def _club_now() -> datetime:
@@ -217,6 +219,18 @@ async def _delete_private_message_safely(message: types.Message) -> None:
         logger.debug("Failed to delete private message %s: %s", message.message_id, e)
 
 
+async def _safe_answer(query: types.CallbackQuery, *args, **kwargs) -> None:
+    """Answer a callback query, swallowing the harmless race where the click
+    arrives after the query token already expired (e.g. bot redeploy backlog)."""
+    try:
+        await query.answer(*args, **kwargs)
+    except TelegramBadRequest as e:
+        if "query is too old" in str(e) or "query ID is invalid" in str(e):
+            logger.debug("Stale callback query answer skipped: %s", e)
+        else:
+            raise
+
+
 async def _send_quiz_intro(message: types.Message) -> None:
     caption = (
         "🚀 <b>LedoLab Business Club</b>\n\n"
@@ -382,6 +396,11 @@ async def _start_goal_flow(message: types.Message, state: FSMContext) -> None:
             locked_text = "🔒 <b>Твоя цель на 30 дней уже зафиксирована.</b>\n\n"
             if goal_text_display:
                 locked_text += f"<blockquote>{escape(goal_text_display)}</blockquote>\n\n"
+            created_at = _parse_goal_created_at(active_goal)
+            if created_at:
+                deadline_date = (created_at + timedelta(days=30)).strftime("%d/%m/%Y")
+                locked_text += f"⏳ Срок цели: до <b>{deadline_date}</b>.\n"
+            locked_text += "Если выполнишь её раньше срока — напиши админу в личные сообщения.\n\n"
             locked_text += "Цель нельзя менять — это часть дисциплины клуба. Держи фокус и двигайся вперёд 👇"
             await message.answer(
                 locked_text,
@@ -436,11 +455,11 @@ async def _enter_goal_text_state(message: types.Message, state: FSMContext) -> N
 async def handle_goal_start_now(query: types.CallbackQuery, state: FSMContext) -> None:
     """User clicked 'Поставить цель' from the thinking-time intro screen."""
     try:
-        await query.answer()
+        await _safe_answer(query)
         await _enter_goal_text_state(query.message, state)
     except Exception as e:
         logger.error("Error in goal_start_now: %s", e, exc_info=True)
-        await query.answer("Ошибка. Попробуй ещё раз.")
+        await _safe_answer(query, "Ошибка. Попробуй ещё раз.")
 
 
 @router.callback_query(F.data == "goal_text_postpone")
@@ -448,7 +467,7 @@ async def handle_goal_text_postpone(query: types.CallbackQuery, state: FSMContex
     """User postponed goal confirmation — clear FSM, encourage to return."""
     try:
         await state.clear()
-        await query.answer()
+        await _safe_answer(query)
         await query.message.answer(
             "⏳ Хорошо — не торопись.\n\n"
             "Сильная цель требует ясности. Подумай ещё раз и возвращайся, "
@@ -458,7 +477,7 @@ async def handle_goal_text_postpone(query: types.CallbackQuery, state: FSMContex
         )
     except Exception as e:
         logger.error("Error in goal_text_postpone: %s", e, exc_info=True)
-        await query.answer("Ошибка. Попробуй ещё раз.")
+        await _safe_answer(query, "Ошибка. Попробуй ещё раз.")
 
 
 async def _active_goal_text(user_id: int) -> str | None:
@@ -490,9 +509,9 @@ async def handle_goal_split_days(query: types.CallbackQuery, state: FSMContext) 
     try:
         # Guard: route already confirmed — this is a stale button, don't restart the flow.
         if await _route_already_set(query.from_user.id):
-            await query.answer("✅ Маршрут на 5 дней уже собран. Цели менять нельзя.", show_alert=True)
+            await _safe_answer(query, "✅ Маршрут на 5 дней уже собран. Цели менять нельзя.", show_alert=True)
             return
-        await query.answer()
+        await _safe_answer(query)
         data = await state.get_data()
         goal_text = data.get("goal_text", "")
         await state.set_state(GoalStates.waiting_day_text)
@@ -500,7 +519,7 @@ async def handle_goal_split_days(query: types.CallbackQuery, state: FSMContext) 
         await _send_goal_route_intro(query, goal_text)
     except Exception as e:
         logger.error("Error in goal_split_days: %s", e, exc_info=True)
-        await query.answer("Ошибка. Попробуй ещё раз.")
+        await _safe_answer(query, "Ошибка. Попробуй ещё раз.")
 
 
 @router.callback_query(F.data == "goal_split_later")
@@ -508,10 +527,10 @@ async def handle_goal_split_later(query: types.CallbackQuery, state: FSMContext)
     """User chose to split into 5 days later."""
     try:
         if await _route_already_set(query.from_user.id):
-            await query.answer("✅ Маршрут на 5 дней уже собран. Цели менять нельзя.", show_alert=True)
+            await _safe_answer(query, "✅ Маршрут на 5 дней уже собран. Цели менять нельзя.", show_alert=True)
             return
         await state.clear()
-        await query.answer()
+        await _safe_answer(query)
         await query.message.answer(
             "👍 Окей — цель зафиксирована.\n\n"
             "Когда будешь готов разбить её на 5-дневные маршруты — "
@@ -521,7 +540,7 @@ async def handle_goal_split_later(query: types.CallbackQuery, state: FSMContext)
         )
     except Exception as e:
         logger.error("Error in goal_split_later: %s", e, exc_info=True)
-        await query.answer("Ошибка. Попробуй ещё раз.")
+        await _safe_answer(query, "Ошибка. Попробуй ещё раз.")
 
 
 async def _start_route_flow(message: types.Message, state: FSMContext) -> None:
@@ -770,6 +789,7 @@ async def _start_report_flow(message: types.Message, state: FSMContext) -> None:
         report_date=today,
         report_tasks=task_texts,
         report_file_id=None,
+        report_started_at=_club_now().timestamp(),
     )
     await _answer_private_with_actions(
         message,
@@ -973,12 +993,12 @@ async def restart_report_after_admin_comment(query: types.CallbackQuery, state: 
     report_id = query.data.split(":", 2)[2]
     report = await database.get_daily_report_by_id(report_id)
     if not report:
-        await query.answer("Отчет не найден.", show_alert=True)
+        await _safe_answer(query, "Отчет не найден.", show_alert=True)
         return
 
     club_user = await database.get_club_user(query.from_user.id)
     if not club_user or club_user.get("id") != report.get("user_id"):
-        await query.answer("Это не твой отчет.", show_alert=True)
+        await _safe_answer(query, "Это не твой отчет.", show_alert=True)
         return
 
     task_texts = [str(task).strip() for task in list(report.get("tasks_snapshot") or []) if str(task).strip()]
@@ -988,7 +1008,7 @@ async def restart_report_after_admin_comment(query: types.CallbackQuery, state: 
             task_texts = [str(task).strip() for task in payload[0]["task_lines"] if str(task).strip()]
 
     if not task_texts:
-        await query.answer("Не удалось восстановить задачи для отчета.", show_alert=True)
+        await _safe_answer(query, "Не удалось восстановить задачи для отчета.", show_alert=True)
         return
 
     await state.clear()
@@ -999,13 +1019,14 @@ async def restart_report_after_admin_comment(query: types.CallbackQuery, state: 
         report_tasks=task_texts,
         report_file_id=None,
         redo_report_id=report_id,
+        report_started_at=_club_now().timestamp(),
     )
     await _answer_private_with_actions(
         query,
         report_service.report_intro_text(task_texts),
         single_message=True,
     )
-    await query.answer()
+    await _safe_answer(query)
 
 
 @router.callback_query(F.data.startswith("user_report:drop:"))
@@ -1016,11 +1037,21 @@ async def drop_report_redo(query: types.CallbackQuery, state: FSMContext) -> Non
     except Exception:
         pass
     await query.message.answer("Ок, отчет на сегодня не пересдаём. Завтра начнёшь новый день 👇")
-    await query.answer()
+    await _safe_answer(query)
 
 
 @router.message(F.video_note, ReportStates.waiting_proof)
 async def save_report_video_note(message: types.Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    started_at = data.get("report_started_at")
+    if started_at and _club_now().timestamp() - float(started_at) > REPORT_PROOF_WINDOW_SECONDS:
+        await state.clear()
+        await message.answer(
+            "⌛ Время на сдачу отчета истекло (5 минут).\n\n"
+            "Сдай отчет заново кнопкой из закреплённого сообщения в группе 👆"
+        )
+        return
+
     await state.update_data(report_file_id=message.video_note.file_id)
     await state.set_state(ReportStates.reviewing)
     await _answer_private_with_actions(
@@ -1049,7 +1080,7 @@ async def redo_report_video_note(query: types.CallbackQuery, state: FSMContext) 
         inline_markup=back_to_group_keyboard(RETURN_GROUP_URL) if RETURN_GROUP_URL else None,
         single_message=True,
     )
-    await query.answer()
+    await _safe_answer(query)
 
 
 @router.callback_query(ReportStates.reviewing, F.data == "report_send")
@@ -1061,12 +1092,12 @@ async def send_daily_report(query: types.CallbackQuery, state: FSMContext) -> No
     report_file_id = data.get("report_file_id")
 
     if not report_user_id or not task_texts or not report_file_id:
-        await query.answer("Не хватает данных для отправки отчета.", show_alert=True)
+        await _safe_answer(query, "Не хватает данных для отправки отчета.", show_alert=True)
         return
 
     club_user = await database.get_club_user(query.from_user.id)
     if not club_user:
-        await query.answer("Не удалось найти твой профиль.", show_alert=True)
+        await _safe_answer(query, "Не удалось найти твой профиль.", show_alert=True)
         return
 
     entries = [{
@@ -1084,7 +1115,7 @@ async def send_daily_report(query: types.CallbackQuery, state: FSMContext) -> No
         entries=entries,
     )
     if not report:
-        await query.answer("Не удалось сохранить отчет.", show_alert=True)
+        await _safe_answer(query, "Не удалось сохранить отчет.", show_alert=True)
         return
 
     target_group_id = REPORTS_GROUP_ID
@@ -1152,13 +1183,13 @@ async def send_daily_report(query: types.CallbackQuery, state: FSMContext) -> No
         inline_markup=result_markup,
         single_message=True,
     )
-    await query.answer("Отчет отправлен ✅")
+    await _safe_answer(query, "Отчет отправлен ✅")
 
 
 @router.callback_query(F.data == "goal_route_refresh")
 async def start_next_route_flow(query: types.CallbackQuery, state: FSMContext) -> None:
     if not await database.has_completed_quiz(query.from_user.id):
-        await query.answer("Сначала пройди квиз.", show_alert=True)
+        await _safe_answer(query, "Сначала пройди квиз.", show_alert=True)
         return
 
     user = await database.ensure_club_user(
@@ -1168,7 +1199,7 @@ async def start_next_route_flow(query: types.CallbackQuery, state: FSMContext) -
         language_code=query.from_user.language_code or "ru",
     )
     if not user:
-        await query.answer("Не удалось подготовить профиль.", show_alert=True)
+        await _safe_answer(query, "Не удалось подготовить профиль.", show_alert=True)
         return
 
     active_goal = await database.get_active_goal(user["id"])
@@ -1182,7 +1213,7 @@ async def start_next_route_flow(query: types.CallbackQuery, state: FSMContext) -
             inline_markup=back_to_group_keyboard(RETURN_GROUP_URL) if RETURN_GROUP_URL else None,
             single_message=True,
         )
-        await query.answer()
+        await _safe_answer(query)
         return
 
     if not _goal_is_inside_30_days(active_goal):
@@ -1195,7 +1226,7 @@ async def start_next_route_flow(query: types.CallbackQuery, state: FSMContext) -
             inline_markup=back_to_group_keyboard(RETURN_GROUP_URL) if RETURN_GROUP_URL else None,
             single_message=True,
         )
-        await query.answer()
+        await _safe_answer(query)
         return
 
     goal_text = str(active_goal.get("goal_text") or "").strip()
@@ -1208,7 +1239,7 @@ async def start_next_route_flow(query: types.CallbackQuery, state: FSMContext) -
         refresh_route=True,
     )
     await _send_goal_route_intro(query, goal_text)
-    await query.answer("Собираем новый маршрут 🚀")
+    await _safe_answer(query, "Собираем новый маршрут 🚀")
 
 
 @router.callback_query(TaskStates.waiting_task_text, F.data == "day_go")
@@ -1216,7 +1247,7 @@ async def start_day_task_collection(query: types.CallbackQuery, state: FSMContex
     await state.update_data(day_task_step=1, day_tasks=[])
     await state.set_state(TaskStates.collecting_day_tasks)
     await _show_task_prompt(query, 1)
-    await query.answer()
+    await _safe_answer(query)
 
 
 @router.callback_query(TaskStates.waiting_task_text, F.data == "day_tomorrow")
@@ -1231,7 +1262,7 @@ async def postpone_day_to_tomorrow(query: types.CallbackQuery, state: FSMContext
         inline_text="Вернуться в группу можно здесь 👇",
         single_message=True,
     )
-    await query.answer()
+    await _safe_answer(query)
 
 
 @router.message(TaskStates.collecting_day_tasks)
@@ -1281,7 +1312,7 @@ async def open_next_day_task(query: types.CallbackQuery, state: FSMContext) -> N
     next_task_number = int(query.data.split(":")[1])
     await state.update_data(day_task_step=next_task_number)
     await _show_task_prompt(query, next_task_number)
-    await query.answer()
+    await _safe_answer(query)
 
 
 @router.callback_query(TaskStates.collecting_day_tasks, F.data == "day_task_skip")
@@ -1290,7 +1321,7 @@ async def skip_remaining_day_tasks(query: types.CallbackQuery, state: FSMContext
     tasks = [task for task in list(data.get("day_tasks") or []) if task]
     await state.set_state(TaskStates.reviewing_day_tasks)
     await _show_day_review(query, tasks)
-    await query.answer()
+    await _safe_answer(query)
 
 
 @router.callback_query(TaskStates.reviewing_day_tasks, F.data == "day_tasks_edit")
@@ -1298,7 +1329,7 @@ async def restart_day_task_collection(query: types.CallbackQuery, state: FSMCont
     await state.update_data(day_tasks=[], day_task_step=1)
     await state.set_state(TaskStates.collecting_day_tasks)
     await _show_task_prompt(query, 1)
-    await query.answer()
+    await _safe_answer(query)
 
 
 @router.callback_query(TaskStates.reviewing_day_tasks, F.data == "day_tasks_confirm")
@@ -1306,7 +1337,7 @@ async def confirm_day_tasks(query: types.CallbackQuery, state: FSMContext) -> No
     data = await state.get_data()
     tasks = [task for task in list(data.get("day_tasks") or []) if task]
     if not tasks:
-        await query.answer("Сначала собери хотя бы одну задачу.", show_alert=True)
+        await _safe_answer(query, "Сначала собери хотя бы одну задачу.", show_alert=True)
         return
 
     club_user = await database.ensure_club_user(
@@ -1316,7 +1347,7 @@ async def confirm_day_tasks(query: types.CallbackQuery, state: FSMContext) -> No
         language_code=query.from_user.language_code or "ru",
     )
     if not club_user:
-        await query.answer("Не удалось подготовить профиль участника.", show_alert=True)
+        await _safe_answer(query, "Не удалось подготовить профиль участника.", show_alert=True)
         return
 
     operational_date = str(data.get("day_operational_date") or _club_day_date())
@@ -1355,6 +1386,10 @@ async def confirm_day_tasks(query: types.CallbackQuery, state: FSMContext) -> No
             "📤 Отчет сдаётся кнопкой из закреплённого сообщения 👆",
             "Погнали 🔥",
         ])
+        if CLUB_MENU_URL:
+            group_text_lines.append(
+                f"\n👇 {user_label}, жми <a href=\"{CLUB_MENU_URL}\">Меню клуба</a>, чтобы свериться с целью и планом"
+            )
         try:
             await query.bot.send_message(REPORTS_GROUP_ID, "\n".join(group_text_lines))
         except Exception as exc:
@@ -1366,7 +1401,7 @@ async def confirm_day_tasks(query: types.CallbackQuery, state: FSMContext) -> No
         "\n".join(f"{idx}. {escape(str(task))}" for idx, task in enumerate(tasks, 1)),
         _club_day_deadline_text(),
     )
-    await query.answer("Задачи на день зафиксированы ✅")
+    await _safe_answer(query, "Задачи на день зафиксированы ✅")
 
 
 @router.callback_query(TaskStates.waiting_task_text, F.data == "flow_back")
@@ -1381,7 +1416,7 @@ async def handle_day_flow_back(query: types.CallbackQuery, state: FSMContext) ->
 
     if current_state == TaskStates.waiting_task_text.state:
         await _show_day_intro(query, week_hint, _club_day_deadline_text(), path_day_number)
-        await query.answer("↩️ Шаг назад")
+        await _safe_answer(query, "↩️ Шаг назад")
         return
 
     if current_state == GoalStates.waiting_day_text.state:
@@ -1391,7 +1426,7 @@ async def handle_day_flow_back(query: types.CallbackQuery, state: FSMContext) ->
             await _show_day_intro(query, week_hint, _club_day_deadline_text(), path_day_number)
         else:
             await _show_goal_day_prompt(query, state, len(milestones))
-        await query.answer("↩️ Шаг назад")
+        await _safe_answer(query, "↩️ Шаг назад")
         return
 
     if current_state == TaskStates.collecting_day_tasks.state:
@@ -1400,7 +1435,7 @@ async def handle_day_flow_back(query: types.CallbackQuery, state: FSMContext) ->
         next_step = max(len(tasks) + 1, 1)
         await state.update_data(day_tasks=tasks, day_task_step=next_step)
         await _show_task_prompt(query, next_step)
-        await query.answer("↩️ Шаг назад")
+        await _safe_answer(query, "↩️ Шаг назад")
         return
 
     if current_state == TaskStates.reviewing_day_tasks.state:
@@ -1410,10 +1445,10 @@ async def handle_day_flow_back(query: types.CallbackQuery, state: FSMContext) ->
         await state.update_data(day_tasks=tasks, day_task_step=next_step)
         await state.set_state(TaskStates.collecting_day_tasks)
         await _show_task_prompt(query, next_step)
-        await query.answer("↩️ Шаг назад")
+        await _safe_answer(query, "↩️ Шаг назад")
         return
 
-    await query.answer("↩️ Шаг назад")
+    await _safe_answer(query, "↩️ Шаг назад")
 
 
 @router.message(GoalStates.waiting_goal_text)
@@ -1437,7 +1472,7 @@ async def handle_goal_text(message: types.Message, state: FSMContext) -> None:
 async def handle_goal_text_confirmed(query: types.CallbackQuery, state: FSMContext) -> None:
     """User confirmed their 30-day goal — save to DB and offer to split into 5 days."""
     try:
-        await query.answer()
+        await _safe_answer(query)
         data = await state.get_data()
         goal_text = data.get("goal_text", "")
 
@@ -1476,14 +1511,14 @@ async def handle_goal_text_confirmed(query: types.CallbackQuery, state: FSMConte
         )
     except Exception as e:
         logger.error("Error confirming goal text: %s", e, exc_info=True)
-        await query.answer("Ошибка. Попробуй ещё раз.")
+        await _safe_answer(query, "Ошибка. Попробуй ещё раз.")
 
 
 @router.callback_query(GoalStates.confirming_goal, F.data == "goal_text_edit")
 async def handle_goal_text_edit(query: types.CallbackQuery, state: FSMContext) -> None:
     """User wants to rewrite the 30-day goal."""
     try:
-        await query.answer()
+        await _safe_answer(query)
         await state.set_state(GoalStates.waiting_goal_text)
         await query.message.answer(
             "✏️ Окей — напиши цель заново.\n\n"
@@ -1491,7 +1526,7 @@ async def handle_goal_text_edit(query: types.CallbackQuery, state: FSMContext) -
         )
     except Exception as e:
         logger.error("Error in goal_text_edit: %s", e, exc_info=True)
-        await query.answer("Ошибка. Попробуй ещё раз.")
+        await _safe_answer(query, "Ошибка. Попробуй ещё раз.")
 
 
 @router.callback_query(GoalStates.waiting_day_text, F.data.startswith("goal_day:"))
@@ -1501,7 +1536,7 @@ async def open_goal_day_step(query: types.CallbackQuery, state: FSMContext) -> N
     """Open a specific 5-day milestone step."""
     day_number = int(query.data.split(":")[1])
     await _show_goal_day_prompt(query, state, day_number)
-    await query.answer("↩️ Шаг назад")
+    await _safe_answer(query, "↩️ Шаг назад")
 
 
 @router.callback_query(GoalStates.waiting_day_text, F.data == "goal_route_back")
@@ -1511,21 +1546,21 @@ async def goal_route_back_to_intro(query: types.CallbackQuery, state: FSMContext
     data = await state.get_data()
     goal_text = data.get("goal_text", "")
     await _send_goal_route_intro(query, goal_text)
-    await query.answer("↩️ Шаг назад")
+    await _safe_answer(query, "↩️ Шаг назад")
 
 
 @router.callback_query(GoalStates.reviewing, F.data == "goal_review_back")
 async def goal_review_back_to_day(query: types.CallbackQuery, state: FSMContext) -> None:
     """Step back from the 5-day review screen to the last day input."""
     await _show_goal_day_prompt(query, state, 5)
-    await query.answer("↩️ Шаг назад")
+    await _safe_answer(query, "↩️ Шаг назад")
 
 
 @router.callback_query(GoalStates.reviewing, F.data == "goal_edit_back")
 async def goal_edit_back_to_review(query: types.CallbackQuery, state: FSMContext) -> None:
     """Step back from the day-picker to the 5-day review screen."""
     await _show_goal_review(query, state)
-    await query.answer("↩️ Шаг назад")
+    await _safe_answer(query, "↩️ Шаг назад")
 
 
 @router.message(GoalStates.waiting_day_text)
@@ -1581,7 +1616,7 @@ async def edit_goal_days(query: types.CallbackQuery, state: FSMContext) -> None:
         inline_markup=goal_edit_days_keyboard(),
         single_message=True,
     )
-    await query.answer()
+    await _safe_answer(query)
 
 
 @router.callback_query(GoalStates.reviewing, F.data == "goal_confirm")
@@ -1592,7 +1627,7 @@ async def confirm_goal_flow(query: types.CallbackQuery, state: FSMContext) -> No
     milestones = [item.strip() for item in data.get("milestones", []) if item.strip()]
     refresh_route = bool(data.get("refresh_route"))
     if not goal_text or len(milestones) < 5:
-        await query.answer("Не хватает данных для сохранения.", show_alert=True)
+        await _safe_answer(query, "Не хватает данных для сохранения.", show_alert=True)
         return
 
     user = await database.ensure_club_user(
@@ -1602,13 +1637,13 @@ async def confirm_goal_flow(query: types.CallbackQuery, state: FSMContext) -> No
         language_code=query.from_user.language_code or "ru",
     )
     if not user:
-        await query.answer("Не удалось сохранить цель.", show_alert=True)
+        await _safe_answer(query, "Не удалось сохранить цель.", show_alert=True)
         return
 
     if refresh_route:
         saved_goal = await database.update_active_goal_milestones(user["id"], milestones)
         if not saved_goal:
-            await query.answer("Не удалось обновить маршрут в базе.", show_alert=True)
+            await _safe_answer(query, "Не удалось обновить маршрут в базе.", show_alert=True)
             return
 
         for day_number, milestone in enumerate(milestones, 1):
@@ -1657,12 +1692,12 @@ async def confirm_goal_flow(query: types.CallbackQuery, state: FSMContext) -> No
             single_message=True,
         )
         await state.clear()
-        await query.answer("Маршрут обновлен ✅")
+        await _safe_answer(query, "Маршрут обновлен ✅")
         return
 
     saved_goal = await database.set_active_goal(user["id"], goal_text, milestones)
     if not saved_goal:
-        await query.answer("Не удалось сохранить цель в базе.", show_alert=True)
+        await _safe_answer(query, "Не удалось сохранить цель в базе.", show_alert=True)
         return
 
     await cache.set_data(cache.KeyManager.get_goal_lock_key(query.from_user.id), goal_text, ex=30 * 24 * 60 * 60)
@@ -1726,7 +1761,7 @@ async def confirm_goal_flow(query: types.CallbackQuery, state: FSMContext) -> No
         single_message=True,
     )
     await state.clear()
-    await query.answer("Цели подтверждены ✅")
+    await _safe_answer(query, "Цели подтверждены ✅")
 
 
 # --- Stale goal-flow buttons (no FSM state) -------------------------------
@@ -1739,9 +1774,10 @@ async def confirm_goal_flow(query: types.CallbackQuery, state: FSMContext) -> No
 async def handle_stale_goal_buttons(query: types.CallbackQuery) -> None:
     """Catch clicks on outdated goal-flow buttons after the route is confirmed."""
     if await _route_already_set(query.from_user.id):
-        await query.answer("✅ Цели уже поставлены. Менять нельзя.", show_alert=True)
+        await _safe_answer(query, "✅ Цели уже поставлены. Менять нельзя.", show_alert=True)
     else:
-        await query.answer(
+        await _safe_answer(
+            query,
             "⚠️ Это меню устарело. Открой 📅 Моя цель на 5 дней заново.",
             show_alert=True,
         )
@@ -1752,10 +1788,36 @@ async def handle_stale_goal_text_buttons(query: types.CallbackQuery) -> None:
     """Catch clicks on an outdated goal-text screen (goal was already confirmed elsewhere)."""
     goal_text = await _active_goal_text(query.from_user.id)
     if goal_text:
-        await query.answer(f"✅ Твоя цель уже зафиксирована:\n\n{goal_text[:150]}", show_alert=True)
+        await _safe_answer(query, f"✅ Твоя цель уже зафиксирована:\n\n{goal_text[:150]}", show_alert=True)
     else:
-        await query.answer(
+        await _safe_answer(query,
             "⚠️ Это меню устарело. Открой 🎯 Моя цель (30 дней) заново.",
+            show_alert=True,
+        )
+
+
+async def _day_tasks_already_set(telegram_id: int) -> bool:
+    """True if today's tasks are already locked/saved for this user."""
+    club_user = await database.get_club_user(telegram_id)
+    if not club_user:
+        return False
+    today = _club_day_date()
+    today_lock = await cache.get_data(cache.KeyManager.get_day_plan_lock_key(telegram_id, today))
+    if today_lock:
+        return True
+    today_tasks = await database.get_today_tasks(club_user["id"], today)
+    return bool(today_tasks)
+
+
+@router.callback_query(F.data.in_({"day_tasks_edit", "day_tasks_confirm"}))
+async def handle_stale_day_tasks_buttons(query: types.CallbackQuery) -> None:
+    """Catch clicks on an outdated day-task review screen (tasks already saved elsewhere)."""
+    if await _day_tasks_already_set(query.from_user.id):
+        await _safe_answer(query, "✅ Задачи на сегодня уже зафиксированы.", show_alert=True)
+    else:
+        await _safe_answer(
+            query,
+            "⚠️ Это меню устарело. Собери задачи на день заново.",
             show_alert=True,
         )
 
