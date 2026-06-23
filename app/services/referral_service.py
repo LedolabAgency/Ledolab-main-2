@@ -204,6 +204,8 @@ async def announce_referred_member_joined(
         f"LedoScore (+{REFERRER_BONUS} / +{NEWBIE_BONUS}) и по 100 грн 🔥\n\n"
         "Сильное окружение растит сильных. Поддержите новенького 💪"
     )
+    if CLUB_MENU_URL:
+        text += f"\n\n👇 {newbie_mention}, для постановки целей переходи в <a href=\"{CLUB_MENU_URL}\">Меню клуба</a>"
 
     for target_group_id in target_group_ids:
         try:

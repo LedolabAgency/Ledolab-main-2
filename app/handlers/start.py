@@ -461,6 +461,17 @@ async def handle_goal_text_postpone(query: types.CallbackQuery, state: FSMContex
         await query.answer("Ошибка. Попробуй ещё раз.")
 
 
+async def _active_goal_text(user_id: int) -> str | None:
+    """Return the saved 30-day goal text, or None if no active goal exists."""
+    club_user = await database.get_club_user(user_id)
+    if not club_user:
+        return None
+    active_goal = await database.get_active_goal(club_user["id"])
+    if not active_goal:
+        return None
+    return str(active_goal.get("goal_text") or "").strip() or None
+
+
 async def _route_already_set(user_id: int) -> bool:
     """True if the user already has a confirmed 5-day route saved in DB."""
     club_user = await database.get_club_user(user_id)
@@ -496,6 +507,9 @@ async def handle_goal_split_days(query: types.CallbackQuery, state: FSMContext) 
 async def handle_goal_split_later(query: types.CallbackQuery, state: FSMContext) -> None:
     """User chose to split into 5 days later."""
     try:
+        if await _route_already_set(query.from_user.id):
+            await query.answer("✅ Маршрут на 5 дней уже собран. Цели менять нельзя.", show_alert=True)
+            return
         await state.clear()
         await query.answer()
         await query.message.answer(
@@ -1448,9 +1462,12 @@ async def handle_goal_text_confirmed(query: types.CallbackQuery, state: FSMConte
         except Exception as exc:
             logger.warning("Failed to send goal confirmed video note: %s", exc)
 
+        deadline_date = (_club_now() + timedelta(days=30)).strftime("%d/%m/%Y")
         await query.message.answer(
             "🔥 <b>Цель зафиксирована!</b>\n\n"
             f"<blockquote>{escape(goal_text)}</blockquote>\n\n"
+            f"⏳ Срок цели: до <b>{deadline_date}</b> (30 дней).\n"
+            "Если выполнишь её раньше срока — напиши админу в личные сообщения.\n\n"
             "Теперь нужно разбить её на <b>5-дневный маршрут</b> — "
             "конкретные фокусы на каждый день, чтобы двигаться по шагам, а не в туман.\n\n"
             "Готов сделать это прямо сейчас? 👇",
@@ -1683,19 +1700,11 @@ async def confirm_goal_flow(query: types.CallbackQuery, state: FSMContext) -> No
             ]
         )
         if CLUB_MENU_URL:
-            group_text_lines.extend(["", "👇 Продолжай ставить цели и собирать дни здесь:"])
-        try:
-            await query.bot.send_message(
-                REPORTS_GROUP_ID,
-                "\n".join(group_text_lines),
-                reply_markup=(
-                    types.InlineKeyboardMarkup(
-                        inline_keyboard=[[types.InlineKeyboardButton(text="📌 Меню клуба", url=CLUB_MENU_URL)]]
-                    )
-                    if CLUB_MENU_URL
-                    else None
-                ),
+            group_text_lines.extend(
+                ["", f"👇 Для постановки целей переходи в <a href=\"{CLUB_MENU_URL}\">Меню клуба</a>"]
             )
+        try:
+            await query.bot.send_message(REPORTS_GROUP_ID, "\n".join(group_text_lines))
         except Exception as exc:
             logger.error("Failed to post goal to group: %s", exc, exc_info=True)
 
@@ -1734,6 +1743,19 @@ async def handle_stale_goal_buttons(query: types.CallbackQuery) -> None:
     else:
         await query.answer(
             "⚠️ Это меню устарело. Открой 📅 Моя цель на 5 дней заново.",
+            show_alert=True,
+        )
+
+
+@router.callback_query(F.data.in_({"goal_text_confirm", "goal_text_postpone", "goal_text_edit"}))
+async def handle_stale_goal_text_buttons(query: types.CallbackQuery) -> None:
+    """Catch clicks on an outdated goal-text screen (goal was already confirmed elsewhere)."""
+    goal_text = await _active_goal_text(query.from_user.id)
+    if goal_text:
+        await query.answer(f"✅ Твоя цель уже зафиксирована:\n\n{goal_text[:150]}", show_alert=True)
+    else:
+        await query.answer(
+            "⚠️ Это меню устарело. Открой 🎯 Моя цель (30 дней) заново.",
             show_alert=True,
         )
 
