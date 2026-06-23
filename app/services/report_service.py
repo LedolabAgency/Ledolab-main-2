@@ -141,7 +141,7 @@ def build_group_summary(
             for idx, task in enumerate(task_lines, 1):
                 lines.append(f"{idx}. {escape(str(task or ''))}")
             lines.append("")
-        lines.append("🎥 Кружочек с отчетом — в сообщении ниже")
+        lines.append("🎥 Кружочек с отчетом — в сообщении выше")
         comment = (entry.get("comment_text") or "").strip()
         if comment:
             lines.append(f"💬 {escape(comment)}")

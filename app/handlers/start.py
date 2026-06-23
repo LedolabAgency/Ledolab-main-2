@@ -1079,20 +1079,22 @@ async def send_daily_report(query: types.CallbackQuery, state: FSMContext) -> No
         target_group_id = int(last_group_chat) if last_group_chat else None
 
     if target_group_id:
+        video_message = None
+        try:
+            video_message = await query.bot.send_video_note(
+                chat_id=target_group_id,
+                video_note=report_file_id,
+            )
+        except Exception as exc:
+            logger.warning("Failed to send report video note to group | user=%s error=%s", query.from_user.id, exc)
+
         summary_message = await query.bot.send_message(
             chat_id=target_group_id,
             text=report["summary_text"],
             reply_markup=report_service.group_report_vote_keyboard(report["id"]),
+            reply_to_message_id=video_message.message_id if video_message else None,
         )
         await database.set_daily_report_group_post(report["id"], target_group_id, summary_message.message_id)
-        try:
-            await query.bot.send_video_note(
-                chat_id=target_group_id,
-                video_note=report_file_id,
-                reply_to_message_id=summary_message.message_id,
-            )
-        except Exception as exc:
-            logger.warning("Failed to send report video note to group | user=%s error=%s", query.from_user.id, exc)
 
     await referral_service.process_referral_after_report(
         bot=query.bot,
@@ -1336,6 +1338,7 @@ async def confirm_day_tasks(query: types.CallbackQuery, state: FSMContext) -> No
         group_text_lines.extend([
             "",
             f"⏰ Дедлайн: {_club_day_deadline_text()}",
+            "📤 Отчет сдаётся кнопкой из закреплённого сообщения 👆",
             "Погнали 🔥",
         ])
         try:
@@ -1679,8 +1682,20 @@ async def confirm_goal_flow(query: types.CallbackQuery, state: FSMContext) -> No
                 "Поддержите его огнем в комментариях и реакциях 🔥",
             ]
         )
+        if CLUB_MENU_URL:
+            group_text_lines.extend(["", "👇 Продолжай ставить цели и собирать дни здесь:"])
         try:
-            await query.bot.send_message(REPORTS_GROUP_ID, "\n".join(group_text_lines))
+            await query.bot.send_message(
+                REPORTS_GROUP_ID,
+                "\n".join(group_text_lines),
+                reply_markup=(
+                    types.InlineKeyboardMarkup(
+                        inline_keyboard=[[types.InlineKeyboardButton(text="📌 Меню клуба", url=CLUB_MENU_URL)]]
+                    )
+                    if CLUB_MENU_URL
+                    else None
+                ),
+            )
         except Exception as exc:
             logger.error("Failed to post goal to group: %s", exc, exc_info=True)
 
