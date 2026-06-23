@@ -1186,6 +1186,31 @@ async def send_daily_report(query: types.CallbackQuery, state: FSMContext) -> No
     await _safe_answer(query, "Отчет отправлен ✅")
 
 
+async def _report_already_submitted_today(telegram_id: int) -> bool:
+    """True if today's report is already saved and not awaiting a redo."""
+    club_user = await database.get_club_user(telegram_id)
+    if not club_user:
+        return False
+    today = _club_day_date()
+    existing_report = await database.get_daily_report(club_user["id"], today)
+    if not existing_report:
+        return False
+    return str(existing_report.get("status") or "").lower() not in {"redo_requested", "rejected"}
+
+
+@router.callback_query(F.data.in_({"report_send", "report_redo"}))
+async def handle_stale_report_buttons(query: types.CallbackQuery) -> None:
+    """Catch clicks on an outdated report-preview screen (report already sent elsewhere)."""
+    if await _report_already_submitted_today(query.from_user.id):
+        await _safe_answer(query, "✅ Отчет за сегодня уже сдан. Жду тебя завтра 👋", show_alert=True)
+    else:
+        await _safe_answer(
+            query,
+            "⚠️ Это меню устарело. Сдай отчет заново кнопкой из закреплённого сообщения в группе.",
+            show_alert=True,
+        )
+
+
 @router.callback_query(F.data == "goal_route_refresh")
 async def start_next_route_flow(query: types.CallbackQuery, state: FSMContext) -> None:
     if not await database.has_completed_quiz(query.from_user.id):
