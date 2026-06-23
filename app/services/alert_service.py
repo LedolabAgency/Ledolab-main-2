@@ -67,6 +67,10 @@ class TelegramLogHandler(logging.Handler):
         if record.name == __name__:
             return  # never re-notify about our own send failures
 
+        message = record.getMessage()
+        if "Conflict: terminated by other getUpdates request" in message:
+            return  # harmless overlap between old/new instance during a redeploy
+
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
