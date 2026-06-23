@@ -68,6 +68,13 @@ def _display_label(user: Dict[str, Any]) -> str:
     return escape(str(label))
 
 
+def _streak_progress(streak: int) -> tuple[int, str]:
+    """Position (1-5) within the current 5-day route cycle, plus a fill bar."""
+    position = ((streak - 1) % 5) + 1 if streak > 0 else 0
+    bar = "🟩" * position + "⬜" * (5 - position)
+    return position, bar
+
+
 async def format_rating_text(users: List[Dict[str, Any]], viewer_telegram_id: Optional[int] = None) -> str:
     if not users:
         return "🏆 Рейтинг LedoLab Business Club\n\nПока в рейтинге еще нет участников."
@@ -77,11 +84,14 @@ async def format_rating_text(users: List[Dict[str, Any]], viewer_telegram_id: Op
 
     top_three = users[:3]
     for idx, user in enumerate(top_three, 1):
+        streak = int(user.get("streak", 0))
+        position, bar = _streak_progress(streak)
         lines.extend(
             [
                 f"{medals[idx - 1]} {idx} место — {_display_label(user)}",
-                f"LedoScore: {int(user.get('total_score', 0))}",
-                f"Стрик: {int(user.get('streak', 0))} дн.",
+                f"LedoScore: {int(user.get('total_score', 0))} ⭐️",
+                f"Streak 🔥 {position}/5 дней",
+                bar,
                 "",
             ]
         )
@@ -94,12 +104,15 @@ async def format_rating_text(users: List[Dict[str, Any]], viewer_telegram_id: Op
                 break
         if viewer_row and viewer_row[0] > 3:
             place, user = viewer_row
+            streak = int(user.get("streak", 0))
+            position, bar = _streak_progress(streak)
             lines.extend(
                 [
                     "—",
                     f"Твое место: {place}",
-                    f"Твой LedoScore: {int(user.get('total_score', 0))}",
-                    f"Твой стрик: {int(user.get('streak', 0))} дн.",
+                    f"Твой LedoScore: {int(user.get('total_score', 0))} ⭐️",
+                    f"Твой Streak 🔥 {position}/5 дней",
+                    bar,
                 ]
             )
 
