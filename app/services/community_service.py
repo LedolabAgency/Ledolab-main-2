@@ -208,7 +208,7 @@ async def send_morning_private_reminders(bot: Bot, now: datetime | None = None) 
     """08:30 — личный пуш каждому юзеру с задачами на сегодня."""
     now = now or datetime.now(KYIV_TZ)
     today = now.date().isoformat()
-    users = await database.get_users_with_today_tasks(today)
+    users = await database.get_users_with_tasks_no_report(today)
     me = await bot.get_me()
     bot_username = me.username or ""
     for user in users:
