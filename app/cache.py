@@ -194,6 +194,11 @@ class KeyManager:
         After expiry — they must open the group button again to get a fresh intro."""
         return f"goal_thinking:{user_id}"
 
+    @staticmethod
+    def get_route_started_key(user_id: int) -> str:
+        """Unix timestamp of when the current 5-day route cycle started."""
+        return f"route_started:{user_id}"
+
 
 def seconds_until_midnight() -> int:
     """Return seconds until the next local midnight."""

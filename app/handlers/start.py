@@ -82,6 +82,31 @@ def _goal_is_inside_30_days(goal: dict) -> bool:
     return _club_now() < created_at + timedelta(days=30)
 
 
+async def _route_started_at(user_id: int, active_goal: dict) -> datetime | None:
+    """When the CURRENT 5-day route cycle began.
+
+    Uses the explicit timestamp set on (re)confirmation if present; falls back to the
+    goal's created_at for routes that were set before this timestamp existed.
+    """
+    raw = await cache.get_data(cache.KeyManager.get_route_started_key(user_id))
+    if raw:
+        try:
+            return datetime.fromtimestamp(float(raw), tz=KYIV_TZ)
+        except Exception:
+            pass
+    return _parse_goal_created_at(active_goal)
+
+
+async def _route_is_done(user_id: int, active_goal: dict, current_streak: int) -> bool:
+    """Route is done once the user strings together 5 report days OR 5 calendar days pass."""
+    if current_streak >= 5:
+        return True
+    started_at = await _route_started_at(user_id, active_goal)
+    if not started_at:
+        return False
+    return _club_now() >= started_at + timedelta(days=5)
+
+
 async def _next_path_day_number(telegram_id: int, operational_date: str) -> int:
     """Return which 5-day route focus should be used for the next day setup."""
     current_streak = int((await cache.get_data(cache.KeyManager.get_streak_key(telegram_id))) or 0)
@@ -586,10 +611,11 @@ async def _start_route_flow(message: types.Message, state: FSMContext) -> None:
         await _send_goal_route_intro(message, goal_text)
         return
 
-    # Milestones exist — check if current 5-day route is done (streak >= 5)
+    # Milestones exist — check if current 5-day route is done (streak >= 5, or 5 calendar days passed)
     current_streak = int((await cache.get_data(cache.KeyManager.get_streak_key(user_id))) or 0)
+    route_done = await _route_is_done(user_id, active_goal, current_streak)
 
-    if current_streak >= 5 and _goal_is_inside_30_days(active_goal):
+    if route_done and _goal_is_inside_30_days(active_goal):
         # Route completed — offer to build a new one
         await _answer_private_with_actions(
             message,
@@ -601,7 +627,7 @@ async def _start_route_flow(message: types.Message, state: FSMContext) -> None:
         )
         return
 
-    if current_streak >= 5 and not _goal_is_inside_30_days(active_goal):
+    if route_done and not _goal_is_inside_30_days(active_goal):
         # 30-day cycle finished — new big goal needed
         await state.clear()
         await state.set_state(GoalStates.waiting_goal_text)
@@ -1682,6 +1708,11 @@ async def confirm_goal_flow(query: types.CallbackQuery, state: FSMContext) -> No
             "0",
             ex=30 * 24 * 60 * 60,
         )
+        await cache.set_data(
+            cache.KeyManager.get_route_started_key(query.from_user.id),
+            str(_club_now().timestamp()),
+            ex=30 * 24 * 60 * 60,
+        )
 
         if REPORTS_GROUP_ID:
             user_label = mention_service.build_user_mention(
@@ -1726,6 +1757,11 @@ async def confirm_goal_flow(query: types.CallbackQuery, state: FSMContext) -> No
         return
 
     await cache.set_data(cache.KeyManager.get_goal_lock_key(query.from_user.id), goal_text, ex=30 * 24 * 60 * 60)
+    await cache.set_data(
+        cache.KeyManager.get_route_started_key(query.from_user.id),
+        str(_club_now().timestamp()),
+        ex=30 * 24 * 60 * 60,
+    )
     for day_number, milestone in enumerate(milestones, 1):
         await cache.set_data(
             cache.KeyManager.get_goal_day_lock_key(query.from_user.id, day_number),
