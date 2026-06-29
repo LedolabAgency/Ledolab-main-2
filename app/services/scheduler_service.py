@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 from aiogram import Bot
 
 from app import cache
-from app.services import community_service
+from app.services import community_service, escalation_service
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,11 @@ async def _tick(bot: Bot) -> None:
         if await cache.acquire_lock(morning_key, ex=12 * 60 * 60):
             await community_service.send_morning_private_reminders(bot, now)
             logger.info("Morning private push sent for %s", today)
+
+        escalation_key = f"job:escalation:{today}"
+        if await cache.acquire_lock(escalation_key, ex=12 * 60 * 60):
+            await escalation_service.send_escalation_reminders(bot, now)
+            logger.info("Escalation reminders processed for %s", today)
 
     if _is_midday_window(now):
         midday_key = f"job:midday_reminder:{today}"

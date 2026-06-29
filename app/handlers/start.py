@@ -15,7 +15,7 @@ from aiogram.fsm.context import FSMContext
 
 from app import cache, database
 from app.services import referral_service, report_service, mention_service
-from app.config import CLUB_GROUP_URL, CLUB_MENU_URL, GROUP_ENTRY_URL, REPORTS_GROUP_ID, WEB_APP_URL
+from app.config import ADMIN_IDS, CLUB_GROUP_URL, CLUB_MENU_URL, GROUP_ENTRY_URL, REPORTS_GROUP_ID, WEB_APP_URL
 from app.keyboards.inline.start import (
     after_goal_confirm_keyboard,
     back_to_group_keyboard,
@@ -1884,7 +1884,7 @@ async def handle_stale_day_tasks_buttons(query: types.CallbackQuery) -> None:
 
 
 # --- TEMP: file_id extractor (remove after use) ---------------------------
-@router.message(F.from_user.id == 516684869, F.video_note, F.chat.type == "private")
+@router.message(F.from_user.id.in_(ADMIN_IDS), F.video_note, F.chat.type == "private")
 async def temp_get_video_note_file_id(message: types.Message) -> None:
     await message.answer(f"file_id:\n<code>{message.video_note.file_id}</code>", parse_mode="HTML")
 

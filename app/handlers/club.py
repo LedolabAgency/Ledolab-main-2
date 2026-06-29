@@ -19,7 +19,7 @@ from app.config import (
     REPORTS_GROUP_ID,
 )
 from app.keyboards.inline.start import club_group_keyboard, club_main_menu, open_private_flow_keyboard
-from app.services import cleanup_service, rating_service, report_service, task_service
+from app.services import cleanup_service, escalation_service, rating_service, report_service, task_service
 from app.states.quiz import ReportStates, TaskStates
 
 logger = logging.getLogger(__name__)
@@ -612,3 +612,56 @@ async def save_admin_report_comment(message: types.Message, state: FSMContext) -
 
     await state.clear()
     await message.answer("Комментарий отправлен пользователю.")
+
+
+@router.callback_query(F.data.startswith("esc_delete_ask:"))
+async def ask_delete_escalated_user(query: types.CallbackQuery) -> None:
+    if query.from_user.id not in ADMIN_IDS:
+        await query.answer("Только для админа.", show_alert=True)
+        return
+
+    target_id = int(query.data.split(":", 1)[1])
+    await query.message.edit_reply_markup(
+        reply_markup=types.InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    types.InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"esc_delete_confirm:{target_id}"),
+                    types.InlineKeyboardButton(text="↩️ Отмена", callback_data=f"esc_delete_cancel:{target_id}"),
+                ]
+            ]
+        )
+    )
+    await query.answer("Точно удалить? Это нельзя отменить.", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("esc_delete_confirm:"))
+async def confirm_delete_escalated_user(query: types.CallbackQuery) -> None:
+    if query.from_user.id not in ADMIN_IDS:
+        await query.answer("Только для админа.", show_alert=True)
+        return
+
+    target_id = int(query.data.split(":", 1)[1])
+    stats = await escalation_service.delete_user_everywhere(query.bot, target_id)
+    logger.info("ADMIN escalation delete | admin=%s target=%s stats=%s", query.from_user.id, target_id, stats)
+
+    kicked_text = "кикнут из группы ✅" if stats["kicked"] else "кикнуть из группы не удалось ⚠️ (проверь права бота)"
+    db_stats = stats.get("db_stats") or {}
+    db_text = "\n".join(f"{name}: {count}" for name, count in db_stats.items() if count)
+    await query.message.edit_text(
+        f"🗑 Юзер <code>{target_id}</code> удален.\n\n"
+        f"{kicked_text}\n"
+        f"Redis ключей удалено: {stats['redis_deleted']}\n\n"
+        f"{db_text or 'В БД активных записей не было.'}"
+    )
+    await query.answer("Удалено.")
+
+
+@router.callback_query(F.data.startswith("esc_delete_cancel:"))
+async def cancel_delete_escalated_user(query: types.CallbackQuery) -> None:
+    if query.from_user.id not in ADMIN_IDS:
+        await query.answer("Только для админа.", show_alert=True)
+        return
+
+    target_id = int(query.data.split(":", 1)[1])
+    await query.message.edit_reply_markup(reply_markup=escalation_service.admin_escalation_keyboard(target_id))
+    await query.answer("Отменено.")
