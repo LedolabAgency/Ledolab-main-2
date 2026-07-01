@@ -7,7 +7,7 @@ import json
 from aiogram import Router, types, F
 from aiogram.fsm.context import FSMContext
 from app import database, cache
-from app.config import CLUB_GROUP_URL, GROUP_ENTRY_URL
+from app.config import CLUB_GROUP_URL, CLUB_MENU_URL, GROUP_ENTRY_URL
 from app.keyboards.inline.start import contact_reply_keyboard, club_group_keyboard, return_to_group_keyboard
 from app.services import community_service, quiz_service, referral_service
 
@@ -169,7 +169,7 @@ async def handle_contact_share(message: types.Message) -> None:
         await message.answer_video_note(video_note="DQACAgIAAxkBAAIJAAFqLsz794WUmlRDtogPNDxFyHhzNAACjp8AAksxeEmZvGQ5Iw-gZTwE")
     except Exception as e:
         logger.warning("Failed to send welcome video note: %s", e)
-    group_url = GROUP_ENTRY_URL or CLUB_GROUP_URL
+    menu_url = CLUB_MENU_URL or GROUP_ENTRY_URL or CLUB_GROUP_URL
     await message.answer(
         "✅ <b>Готово — ты внутри LedoLab Business Club.</b>\n\n"
         "Это не чат мотивации. Это среда, где предприниматели каждый день "
@@ -181,8 +181,8 @@ async def handle_contact_share(message: types.Message) -> None:
         "4️⃣ Получаешь LedoScore и растёшь в рейтинге\n\n"
         "Заходи в группу — там закреплено рабочее меню клуба 👇",
         reply_markup=types.InlineKeyboardMarkup(
-            inline_keyboard=[[types.InlineKeyboardButton(text="Зайти в группу", url=group_url)]]
-        ) if group_url else None,
+            inline_keyboard=[[types.InlineKeyboardButton(text="Зайти в группу", url=menu_url)]]
+        ) if menu_url else None,
         parse_mode="HTML",
     )
     referral_record = await database.get_referral_by_referred_telegram(message.from_user.id)
