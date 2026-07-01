@@ -875,6 +875,10 @@ async def cmd_start(
         if args.startswith("ref_") and args != "ref_setup":
             await referral_service.capture_referral_start(user_id, args)
 
+        if await cache.get_data(cache.KeyManager.get_user_reset_key(user_id)):
+            await _send_quiz_intro(message)
+            return
+
         has_quiz = await database.has_completed_quiz(user_id)
 
         if not has_quiz:
@@ -1526,6 +1530,10 @@ async def handle_goal_text_confirmed(query: types.CallbackQuery, state: FSMConte
         await _safe_answer(query)
         data = await state.get_data()
         goal_text = data.get("goal_text", "")
+
+        if await cache.get_data(cache.KeyManager.get_user_reset_key(query.from_user.id)):
+            await state.clear()
+            return
 
         user = await database.ensure_club_user(
             telegram_id=query.from_user.id,

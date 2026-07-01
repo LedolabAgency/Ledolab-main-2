@@ -113,6 +113,8 @@ async def delete_user_everywhere(bot: Bot, telegram_id: int) -> dict[str, Any]:
     """Kick the user from the club group, wipe their DB rows and clear Redis state."""
     result: dict[str, Any] = {"kicked": False, "db_stats": {}, "redis_deleted": 0}
 
+    await cache.set_data(cache.KeyManager.get_user_reset_key(telegram_id), "1", ex=120)
+
     if REPORTS_GROUP_ID:
         try:
             await bot.ban_chat_member(chat_id=REPORTS_GROUP_ID, user_id=telegram_id)

@@ -202,6 +202,7 @@ async def reset_user_command(message: types.Message, command: CommandObject) -> 
             cleanup_service.schedule_delete_message(message.bot, sent.chat.id, sent.message_id, 120)
         return
 
+    await cache.set_data(cache.KeyManager.get_user_reset_key(target_id), "1", ex=120)
     stats = await database.reset_user_data(target_id)
     redis_deleted = await cache.delete_keys_by_patterns(
         [
