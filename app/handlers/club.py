@@ -205,20 +205,7 @@ async def reset_user_command(message: types.Message, command: CommandObject) -> 
     await cache.set_data(cache.KeyManager.get_user_reset_key(target_id), "1", ex=120)
     stats = await database.reset_user_data(target_id)
     redis_deleted = await cache.delete_keys_by_patterns(
-        [
-            f"quiz_done:{target_id}",
-            f"pending_referrer:{target_id}",
-            f"goal_lock:{target_id}",
-            f"goal_day_lock:{target_id}:*",
-            f"day_plan_lock:{target_id}:*",
-            f"streak:{target_id}",
-            f"last_report_date:{target_id}",
-            f"last_group_chat:{target_id}",
-            f"group_welcome:{target_id}",
-            f"group_referral_welcome:{target_id}",
-            f"throttle:*:{target_id}",
-            f"leda_fsm:*{target_id}*",
-        ]
+        escalation_service.all_user_redis_patterns(target_id)
     )
     stats_text = "\n".join(f"{name}: {count}" for name, count in stats.items() if count)
     sent = await message.answer(

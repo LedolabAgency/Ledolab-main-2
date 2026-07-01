@@ -109,8 +109,38 @@ async def send_escalation_reminders(bot: Bot, now: datetime | None = None) -> No
             logger.info("Escalation stage %s sent | user=%s stuck_since=%s", stage, telegram_id, stuck_date)
 
 
+def all_user_redis_patterns(telegram_id: int) -> list[str]:
+    """Complete list of per-user Redis key patterns used across the whole bot.
+    Used by both /reset command and delete_user_everywhere to guarantee
+    identical, exhaustive cleanup."""
+    tid = telegram_id
+    return [
+        f"quiz_done:{tid}",
+        f"pending_quiz:{tid}",
+        f"pending_referrer:{tid}",
+        f"referral_throttle:{tid}",
+        f"goal_lock:{tid}",
+        f"goal_day_lock:{tid}:*",
+        f"goal_thinking:{tid}",
+        f"day_plan_lock:{tid}:*",
+        f"streak:{tid}",
+        f"last_report_date:{tid}",
+        f"score:{tid}",
+        f"last_group_chat:{tid}",
+        f"group_welcome:{tid}",
+        f"group_referral_welcome:{tid}",
+        f"route_started:{tid}",
+        f"escalation:{tid}:*",
+        f"task:{tid}:*",
+        f"morning_push:{tid}:*",
+        f"evening_push:{tid}:*",
+        f"throttle:*:{tid}",
+        f"leda_fsm:*{tid}*",
+    ]
+
+
 async def delete_user_everywhere(bot: Bot, telegram_id: int) -> dict[str, Any]:
-    """Kick the user from the club group, wipe their DB rows and clear Redis state."""
+    """Kick the user from the club group, wipe their DB rows and clear all Redis state."""
     result: dict[str, Any] = {"kicked": False, "db_stats": {}, "redis_deleted": 0}
 
     await cache.set_data(cache.KeyManager.get_user_reset_key(telegram_id), "1", ex=120)
@@ -124,23 +154,5 @@ async def delete_user_everywhere(bot: Bot, telegram_id: int) -> dict[str, Any]:
             logger.warning("Failed to kick %s from group %s: %s", telegram_id, REPORTS_GROUP_ID, e)
 
     result["db_stats"] = await database.reset_user_data(telegram_id)
-    result["redis_deleted"] = await cache.delete_keys_by_patterns(
-        [
-            f"quiz_done:{telegram_id}",
-            f"pending_referrer:{telegram_id}",
-            f"goal_lock:{telegram_id}",
-            f"goal_day_lock:{telegram_id}:*",
-            f"day_plan_lock:{telegram_id}:*",
-            f"streak:{telegram_id}",
-            f"last_report_date:{telegram_id}",
-            f"last_group_chat:{telegram_id}",
-            f"group_welcome:{telegram_id}",
-            f"group_referral_welcome:{telegram_id}",
-            f"throttle:*:{telegram_id}",
-            f"leda_fsm:*{telegram_id}*",
-            f"route_started:{telegram_id}",
-            f"goal_thinking:{telegram_id}",
-            f"escalation:{telegram_id}:*",
-        ]
-    )
+    result["redis_deleted"] = await cache.delete_keys_by_patterns(all_user_redis_patterns(telegram_id))
     return result
