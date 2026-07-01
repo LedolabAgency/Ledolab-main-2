@@ -34,7 +34,7 @@ def contact_reply_keyboard() -> types.ReplyKeyboardMarkup:
             ],
         ],
         resize_keyboard=True,
-        is_persistent=True,
+        one_time_keyboard=True,
         input_field_placeholder="Поделись номером телефона",
     )
 
@@ -162,11 +162,20 @@ def goal_split_keyboard(group_url: str | None = None) -> types.InlineKeyboardMar
 
 
 def goal_day_step_keyboard(day_number: int) -> types.InlineKeyboardMarkup:
-    """Single wide button for the next day step."""
+    """Single wide button to start the 5-day route (shown on the route intro screen)."""
     return types.InlineKeyboardMarkup(
         inline_keyboard=[
             [types.InlineKeyboardButton(text=f"{day_number}-Й ДЕНЬ", callback_data=f"goal_day:{day_number}")],
-            [types.InlineKeyboardButton(text="⬅️ Шаг назад", callback_data="flow_back")],
+        ]
+    )
+
+
+def goal_day_back_keyboard(day_number: int) -> types.InlineKeyboardMarkup:
+    """Back-only button shown while the user types a 5-day milestone."""
+    back_cb = f"goal_day:{day_number - 1}" if day_number > 1 else "goal_route_back"
+    return types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [types.InlineKeyboardButton(text="⬅️ Шаг назад", callback_data=back_cb)],
         ]
     )
 
@@ -177,7 +186,7 @@ def goal_review_keyboard() -> types.InlineKeyboardMarkup:
         inline_keyboard=[
             [types.InlineKeyboardButton(text="✅ Утвердить plan", callback_data="goal_confirm")],
             [types.InlineKeyboardButton(text="✏️ Изменить plan", callback_data="goal_edit")],
-            [types.InlineKeyboardButton(text="⬅️ Шаг назад", callback_data="flow_back")],
+            [types.InlineKeyboardButton(text="⬅️ Шаг назад", callback_data="goal_review_back")],
         ]
     )
 
@@ -197,12 +206,12 @@ def goal_edit_days_keyboard() -> types.InlineKeyboardMarkup:
     """Pick which day to edit before final confirmation."""
     return types.InlineKeyboardMarkup(
         inline_keyboard=[
-            [types.InlineKeyboardButton(text="1-Й ДЕНЬ", callback_data="goal_edit_day:1")],
-            [types.InlineKeyboardButton(text="2-Й ДЕНЬ", callback_data="goal_edit_day:2")],
-            [types.InlineKeyboardButton(text="3-Й ДЕНЬ", callback_data="goal_edit_day:3")],
-            [types.InlineKeyboardButton(text="4-Й ДЕНЬ", callback_data="goal_edit_day:4")],
-            [types.InlineKeyboardButton(text="5-Й ДЕНЬ", callback_data="goal_edit_day:5")],
-            [types.InlineKeyboardButton(text="⬅️ Шаг назад", callback_data="flow_back")],
+            [types.InlineKeyboardButton(text="1-Й ДЕНЬ", callback_data="goal_day:1")],
+            [types.InlineKeyboardButton(text="2-Й ДЕНЬ", callback_data="goal_day:2")],
+            [types.InlineKeyboardButton(text="3-Й ДЕНЬ", callback_data="goal_day:3")],
+            [types.InlineKeyboardButton(text="4-Й ДЕНЬ", callback_data="goal_day:4")],
+            [types.InlineKeyboardButton(text="5-Й ДЕНЬ", callback_data="goal_day:5")],
+            [types.InlineKeyboardButton(text="⬅️ Шаг назад", callback_data="goal_edit_back")],
         ]
     )
 
@@ -242,6 +251,17 @@ def back_to_group_keyboard(group_url: str | None = None) -> types.InlineKeyboard
     return types.InlineKeyboardMarkup(
         inline_keyboard=[
             [types.InlineKeyboardButton(text="↩️ Вернуться в группу", url=group_url)]
+        ]
+    )
+
+
+def group_menu_keyboard(group_url: str | None = None) -> types.InlineKeyboardMarkup | None:
+    """Jump-to-pinned-menu button for posts sent inside the group itself."""
+    if not group_url:
+        return None
+    return types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [types.InlineKeyboardButton(text="📌 Меню клуба", url=group_url)]
         ]
     )
 
@@ -315,6 +335,10 @@ def club_main_menu(bot_username: str | None = None, group_url: str | None = None
             text="📤 Сдать отчет",
             url=f"https://t.me/{bot_username}?start=report_setup",
         )
+        referral_button = types.InlineKeyboardButton(
+            text="💸 Рефералка",
+            url=f"https://t.me/{bot_username}?start=ref_setup",
+        )
         rating_button = types.InlineKeyboardButton(text="🏆 Рейтинг", callback_data="rating_view")
         rules_button = types.InlineKeyboardButton(text="📘 Как работает клуб", callback_data="rules_view")
     else:
@@ -322,6 +346,7 @@ def club_main_menu(bot_username: str | None = None, group_url: str | None = None
         route_button = types.InlineKeyboardButton(text="📅 Моя цель на 5 дней", callback_data="route_view")
         day_button = types.InlineKeyboardButton(text="📌 Мой день (до 3х задач)", callback_data="day_view")
         report_button = types.InlineKeyboardButton(text="📤 Сдать отчет", callback_data="report_submit")
+        referral_button = types.InlineKeyboardButton(text="💸 Рефералка", callback_data="referral_view")
         rating_button = types.InlineKeyboardButton(text="🏆 Рейтинг", callback_data="rating_view")
         rules_button = types.InlineKeyboardButton(text="📘 Как работает клуб", callback_data="rules_view")
 
@@ -330,6 +355,7 @@ def club_main_menu(bot_username: str | None = None, group_url: str | None = None
         [route_button],
         [day_button],
         [report_button],
+        [referral_button],
         [rating_button],
         [rules_button],
     ]

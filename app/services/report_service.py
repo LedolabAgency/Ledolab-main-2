@@ -49,6 +49,8 @@ def report_intro_text(task_texts: List[str]) -> str:
             "Важно: кружочек в Telegram длится до 1 минуты, поэтому говори коротко и по делу.",
             "",
             "После записи я покажу тебе превью и дам выбрать: подтвердить или заменить.",
+            "",
+            "⏳ У тебя есть 5 минут для сдачи отчета.",
         ]
     )
     return "\n".join(lines)
@@ -141,7 +143,7 @@ def build_group_summary(
             for idx, task in enumerate(task_lines, 1):
                 lines.append(f"{idx}. {escape(str(task or ''))}")
             lines.append("")
-        lines.append("🎥 Кружочек с отчетом — в сообщении ниже")
+        lines.append("🎥 Кружочек с отчетом — в сообщении выше")
         comment = (entry.get("comment_text") or "").strip()
         if comment:
             lines.append(f"💬 {escape(comment)}")

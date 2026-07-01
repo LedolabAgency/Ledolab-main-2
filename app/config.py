@@ -26,9 +26,10 @@ REDIS_URL: str = _require("REDIS_URL")
 SUPABASE_URL: str = _require("SUPABASE_URL")
 SUPABASE_KEY: str = _require("SUPABASE_KEY")
 WEB_APP_URL: str = _getenv("WEB_APP_URL", "https://example.com")
-_GROUP_URL: str = _getenv("CLUB_GROUP_URL", "https://t.me/+WzcCVTajwSozNzYy")
+_GROUP_URL: str = _getenv("CLUB_GROUP_URL", "https://t.me/c/3644975614/1444")
 CLUB_GROUP_URL: Optional[str] = _GROUP_URL
 GROUP_ENTRY_URL: Optional[str] = _GROUP_URL
+CLUB_MENU_URL: Optional[str] = _getenv("CLUB_MENU_URL", "https://t.me/c/3644975614/1444")
 
 # Опціональні
 SENTRY_DSN: Optional[str] = _getenv("SENTRY_DSN")
@@ -69,6 +70,7 @@ __all__ = [
     "WEB_APP_URL",
     "CLUB_GROUP_URL",
     "GROUP_ENTRY_URL",
+    "CLUB_MENU_URL",
     "SENTRY_DSN",
     "REPORTS_GROUP_ID",
     "LOG_LEVEL",

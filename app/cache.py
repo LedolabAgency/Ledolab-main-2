@@ -194,6 +194,18 @@ class KeyManager:
         After expiry — they must open the group button again to get a fresh intro."""
         return f"goal_thinking:{user_id}"
 
+    @staticmethod
+    def get_route_started_key(user_id: int) -> str:
+        """Unix timestamp of when the current 5-day route cycle started."""
+        return f"route_started:{user_id}"
+
+    @staticmethod
+    def get_user_reset_key(user_id: int) -> str:
+        """Short-lived flag (120 s) set at the moment of admin reset/delete.
+        In-flight FSM callbacks check this and bail out early, preventing
+        stale confirmations from being sent after the user was wiped."""
+        return f"user_reset:{user_id}"
+
 
 def seconds_until_midnight() -> int:
     """Return seconds until the next local midnight."""

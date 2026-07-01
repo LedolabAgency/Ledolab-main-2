@@ -21,6 +21,7 @@ from app.middlewares.throttle import ThrottleMiddleware
 from app import database, cache
 from app.handlers import start_router, quiz_router, callbacks_router, club_router
 from app.services import scheduler_service
+from app.services.alert_service import attach_telegram_log_handler
 
 # Initialize Sentry if configured
 if SENTRY_DSN and sentry_sdk:
@@ -89,7 +90,8 @@ async def main() -> None:
             link_preview_is_disabled=True,
         ),
     )
-    
+    attach_telegram_log_handler(bot)
+
     dp = Dispatcher(storage=storage)
     throttle = ThrottleMiddleware()
     dp.message.outer_middleware(throttle)

@@ -5,6 +5,7 @@ Quiz handler - processes quiz completion from WebApp.
 import logging
 import json
 from aiogram import Router, types, F
+from aiogram.fsm.context import FSMContext
 from app import database, cache
 from app.config import CLUB_GROUP_URL, GROUP_ENTRY_URL
 from app.keyboards.inline.start import contact_reply_keyboard, club_group_keyboard, return_to_group_keyboard
@@ -19,15 +20,16 @@ def _pending_quiz_key(user_id: int) -> str:
 
 
 @router.message(F.web_app_data)
-async def handle_quiz_completion(message: types.Message) -> None:
+async def handle_quiz_completion(message: types.Message, state: FSMContext) -> None:
     """
     Handle WebApp quiz data.
     Creates user profile after quiz completion.
     """
+    await state.clear()
     user_id = message.from_user.id
     username = message.from_user.username
     first_name = message.from_user.first_name
-    
+
     try:
         # Parse quiz data
         quiz_data = json.loads(message.web_app_data.data)
@@ -147,6 +149,27 @@ async def handle_contact_share(message: types.Message) -> None:
     await cache.delete_data(_pending_quiz_key(message.from_user.id))
     await referral_service.bind_pending_referral(message.from_user.id)
 
+    try:
+        await referral_service.announce_referred_member_joined(
+            bot=message.bot,
+            newbie_telegram_id=message.from_user.id,
+            newbie_username=message.from_user.username,
+            newbie_first_name=message.from_user.first_name,
+        )
+    except Exception as e:
+        logger.warning("Failed to announce referred member %s: %s", message.from_user.id, e)
+
+    try:
+        remove_msg = await message.answer(".", reply_markup=types.ReplyKeyboardRemove())
+        await remove_msg.delete()
+    except Exception as e:
+        logger.warning("Failed to remove reply keyboard: %s", e)
+
+    try:
+        await message.answer_video_note(video_note="DQACAgIAAxkBAAIJAAFqLsz794WUmlRDtogPNDxFyHhzNAACjp8AAksxeEmZvGQ5Iw-gZTwE")
+    except Exception as e:
+        logger.warning("Failed to send welcome video note: %s", e)
+    group_url = GROUP_ENTRY_URL or CLUB_GROUP_URL
     await message.answer(
         "✅ <b>Готово — ты внутри LedoLab Business Club.</b>\n\n"
         "Это не чат мотивации. Это среда, где предприниматели каждый день "
@@ -157,15 +180,19 @@ async def handle_contact_share(message: types.Message) -> None:
         "3️⃣ Каждый день — до 3 задач + вечерний отчет\n"
         "4️⃣ Получаешь LedoScore и растёшь в рейтинге\n\n"
         "Заходи в группу — там закреплено рабочее меню клуба 👇",
-        reply_markup=return_to_group_keyboard(GROUP_ENTRY_URL or CLUB_GROUP_URL),
+        reply_markup=types.InlineKeyboardMarkup(
+            inline_keyboard=[[types.InlineKeyboardButton(text="Зайти в группу", url=group_url)]]
+        ) if group_url else None,
         parse_mode="HTML",
     )
-    try:
-        await community_service.announce_member_joined(
-            message.bot,
-            telegram_id=message.from_user.id,
-            username=message.from_user.username,
-            first_name=message.from_user.first_name,
-        )
-    except Exception as e:
-        logger.warning("Failed to announce member %s in group: %s", message.from_user.id, e)
+    referral_record = await database.get_referral_by_referred_telegram(message.from_user.id)
+    if not referral_record:
+        try:
+            await community_service.announce_member_joined(
+                message.bot,
+                telegram_id=message.from_user.id,
+                username=message.from_user.username,
+                first_name=message.from_user.first_name,
+            )
+        except Exception as e:
+            logger.warning("Failed to announce member %s in group: %s", message.from_user.id, e)

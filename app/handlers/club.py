@@ -19,7 +19,7 @@ from app.config import (
     REPORTS_GROUP_ID,
 )
 from app.keyboards.inline.start import club_group_keyboard, club_main_menu, open_private_flow_keyboard
-from app.services import cleanup_service, rating_service, report_service, task_service
+from app.services import cleanup_service, escalation_service, rating_service, report_service, task_service
 from app.states.quiz import ReportStates, TaskStates
 
 logger = logging.getLogger(__name__)
@@ -202,6 +202,7 @@ async def reset_user_command(message: types.Message, command: CommandObject) -> 
             cleanup_service.schedule_delete_message(message.bot, sent.chat.id, sent.message_id, 120)
         return
 
+    await cache.set_data(cache.KeyManager.get_user_reset_key(target_id), "1", ex=120)
     stats = await database.reset_user_data(target_id)
     redis_deleted = await cache.delete_keys_by_patterns(
         [
@@ -409,6 +410,9 @@ async def open_detail_view(query: types.CallbackQuery) -> None:
     await query.answer()
 
 
+RATING_VIEW_THROTTLE_SECONDS = 10 * 60
+
+
 @router.callback_query(F.data == "rating_view")
 async def show_rating(query: types.CallbackQuery) -> None:
     if not await _ensure_group_callback(query):
@@ -416,28 +420,17 @@ async def show_rating(query: types.CallbackQuery) -> None:
     if not await _ensure_quiz_for_query(query):
         return
 
-    users = await rating_service.get_rating_leaderboard()
-    text = await rating_service.format_rating_text(users, viewer_telegram_id=query.from_user.id)
-    await query.message.answer(text)
-    await query.answer("Рейтинг обновлен.")
-
-
-@router.message(F.text == "🏆 Рейтинг")
-async def show_rating_from_text(message: types.Message) -> None:
-    if message.chat.type == "private":
-        await message.answer("Рейтинг живет в группе LedoLab Business Club.")
-        return
-    if not await database.has_completed_quiz(message.from_user.id):
-        me = await message.bot.get_me()
-        await message.answer(
-            "🧭 Сначала пройди квиз в боте, а потом уже смотри рейтинг 👇",
-            reply_markup=open_bot_keyboard(me.username, "start", "🚀 ПРОЙТИ КВИЗ В БОТЕ"),
+    if not await cache.acquire_lock("rating_view_throttle", ex=RATING_VIEW_THROTTLE_SECONDS):
+        await query.answer(
+            "Рейтинг можно смотреть раз в 10 минут.\nПоследний рейтинг уже есть ниже в чате — прокрути сообщения вниз 👇",
+            show_alert=True,
         )
         return
 
     users = await rating_service.get_rating_leaderboard()
-    text = await rating_service.format_rating_text(users, viewer_telegram_id=message.from_user.id)
-    await message.answer(text)
+    text = await rating_service.format_rating_text(users, viewer_telegram_id=query.from_user.id)
+    await query.message.answer(text)
+    await query.answer("Рейтинг обновлен.")
 
 
 @router.callback_query(F.data.startswith("report_vote:"))
@@ -620,3 +613,56 @@ async def save_admin_report_comment(message: types.Message, state: FSMContext) -
 
     await state.clear()
     await message.answer("Комментарий отправлен пользователю.")
+
+
+@router.callback_query(F.data.startswith("esc_delete_ask:"))
+async def ask_delete_escalated_user(query: types.CallbackQuery) -> None:
+    if query.from_user.id not in ADMIN_IDS:
+        await query.answer("Только для админа.", show_alert=True)
+        return
+
+    target_id = int(query.data.split(":", 1)[1])
+    await query.message.edit_reply_markup(
+        reply_markup=types.InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    types.InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"esc_delete_confirm:{target_id}"),
+                    types.InlineKeyboardButton(text="↩️ Отмена", callback_data=f"esc_delete_cancel:{target_id}"),
+                ]
+            ]
+        )
+    )
+    await query.answer("Точно удалить? Это нельзя отменить.", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("esc_delete_confirm:"))
+async def confirm_delete_escalated_user(query: types.CallbackQuery) -> None:
+    if query.from_user.id not in ADMIN_IDS:
+        await query.answer("Только для админа.", show_alert=True)
+        return
+
+    target_id = int(query.data.split(":", 1)[1])
+    stats = await escalation_service.delete_user_everywhere(query.bot, target_id)
+    logger.info("ADMIN escalation delete | admin=%s target=%s stats=%s", query.from_user.id, target_id, stats)
+
+    kicked_text = "кикнут из группы ✅" if stats["kicked"] else "кикнуть из группы не удалось ⚠️ (проверь права бота)"
+    db_stats = stats.get("db_stats") or {}
+    db_text = "\n".join(f"{name}: {count}" for name, count in db_stats.items() if count)
+    await query.message.edit_text(
+        f"🗑 Юзер <code>{target_id}</code> удален.\n\n"
+        f"{kicked_text}\n"
+        f"Redis ключей удалено: {stats['redis_deleted']}\n\n"
+        f"{db_text or 'В БД активных записей не было.'}"
+    )
+    await query.answer("Удалено.")
+
+
+@router.callback_query(F.data.startswith("esc_delete_cancel:"))
+async def cancel_delete_escalated_user(query: types.CallbackQuery) -> None:
+    if query.from_user.id not in ADMIN_IDS:
+        await query.answer("Только для админа.", show_alert=True)
+        return
+
+    target_id = int(query.data.split(":", 1)[1])
+    await query.message.edit_reply_markup(reply_markup=escalation_service.admin_escalation_keyboard(target_id))
+    await query.answer("Отменено.")

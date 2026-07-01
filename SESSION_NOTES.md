@@ -1,0 +1,115 @@
+# Рабочие заметки — LedoLab Business Club bot
+
+> Этот файл — память между сессиями (контейнер эфемерный, сбрасывается).
+> Завтрашняя сессия: прочитать этот файл первым делом, чтобы продолжить без потерь.
+> Перед мержем в main этот файл можно удалить.
+
+## Проект
+- Телеграм-бот для **LedoLab Business Club** — бизнес-сообщество (НЕ спорт).
+- Стек: aiogram 3, FSM (GoalStates / TaskStates / ReportStates), Redis (кэш + локи, `app/cache.py` KeyManager), Supabase (Postgres), хостинг Railway.
+- Логика клуба: цель на 30 дней → разбивка на 5-дневный маршрут → каждый день до 3 задач + вечерний отчёт → LedoScore/рейтинг.
+
+## Правила работы (ВАЖНО, соблюдать строго)
+1. Работаем **ТОЛЬКО** на ветке `feature/add-config`. Новые ветки не создавать никогда.
+2. Workflow: **сначала обсуждаем логику фикса → юзер подтверждает → только потом меняем код → пушим**. Без самодеятельности — кроме обговоренного фикса ничего не трогать.
+3. После изменений: commit + `git push -u origin feature/add-config`.
+4. Отвечать на русском, по факту, без воды.
+
+## Ключевые технические нюансы (набитые шишки)
+- Telegram `file_id` привязан к конкретному боту (id от чужого бота не сработает).
+- `ReplyKeyboardRemove` нельзя слать в одном сообщении с `InlineKeyboardMarkup` — нужно отдельное сообщение.
+- Трюк «невидимое снятие reply-клавиатуры»: отправить "." с `ReplyKeyboardRemove`, затем сразу удалить это сообщение. Пустую строку/zero-width Telegram отвергает (`text must be non-empty`).
+- `one_time_keyboard=True` прячет reply-клаву после использования; `is_persistent=True` держит постоянно.
+- Две разные таблицы юзеров:
+  - `database.get_user(tg_id)` → читает таблицу `quiz_data`, `id` это **int** (например 34).
+  - `database.get_club_user(tg_id)` / `ensure_club_user(...)` → таблица `users`, `id` это **UUID**.
+  - `database.get_active_goal(user_id)` ждёт **UUID** (goals.user_id). Передавать int → ошибка `invalid input syntax for type uuid`. Всегда брать UUID из club_user.
+- Постинг в группу идёт в `REPORTS_GROUP_ID` (env). Если в группе не видно сообщений — проверить что env указывает на нужный чат, это конфиг, не код.
+- Кнопки «Вернуться в группу» используют `CLUB_GROUP_URL = GROUP_ENTRY_URL = t.me/+WzcCVTajwSozNzYy` (инвайт-ссылка). Она открывает чат, но НЕ прыгает на закреплённое меню. Чтобы прыгать на закреп — нужна ссылка вида `t.me/c/<chat_id>/<msg_id>` и хранение message_id закрепа (пока не сделано, обсуждали 2 варианта: хардкод env / автопостинг+пин).
+
+## Сделано в этой сессии (всё запушено в feature/add-config)
+1. **Тихая кнопка «1-Й ДЕНЬ»** — после подтверждения 30-дн цели стейт оставался `confirming_goal`. Фикс: в `handle_goal_split_days` ставим `GoalStates.waiting_day_text` перед показом интро маршрута.
+2. **Кнопка телефона не исчезала** — `contact_reply_keyboard` переведена на `one_time_keyboard=True`; после получения контакта шлём "." + `ReplyKeyboardRemove` и удаляем.
+3. **Welcome видео-кружок** — правильный file_id `DQACAgIAAxkBAAIJAAFqLsz794WUmlRDtogPNDxFyHhzNAACjp8AAksxeEmZvGQ5Iw-gZTwE`, отправка в try/except (иначе хендлер падал молча).
+4. **Стейт квиза не чистился** — `handle_quiz_completion` теперь делает `state.clear()` в начале.
+5. **UX 5-дневного флоу** — авто-переход между днями (`_show_goal_day_prompt` с prefix), убраны мёртвые кнопки «Шаг назад», добавлены `goal_route_back` / `goal_review_back` / `goal_edit_back`.
+6. **Locked сообщение 30-дн цели** — теперь тянет реальный текст цели из БД (через `ensure_club_user` → UUID) + кнопка «Вернуться в группу». (Был баг с `get_user` → int → UUID error, исправлен.)
+7. **Залипшие кнопки старого флоу** (главный баг): после подтверждения 5 целей стейт чистится, но старые сообщения с кнопками остаются.
+   - `handle_goal_split_days`: гард через `_route_already_set()` (проверка БД на ≥5 milestones) → если маршрут уже стоит, алерт «✅ Маршрут на 5 дней уже собран», без перезапуска флоу.
+   - Добавлен catch-all без стейта `handle_stale_goal_buttons` (ловит `goal_day:*`, `goal_route_back`, `goal_review_back`, `goal_edit_back`, `goal_confirm`, `goal_edit`), зарегистрирован ПОСЛЕ стейтовых хендлеров → даёт алерт на устаревших сообщениях.
+8. **«День закрыт»** — под сообщение `_show_day_closed_message` добавлена инлайн-кнопка «Вернуться в группу».
+9. **Дневные задачи в группу** — `confirm_day_tasks` теперь постит в `REPORTS_GROUP_ID` (упоминание юзера + список задач + дедлайн). Маршрут на 5 дней постился и раньше (`confirm_goal_flow`).
+
+## Важные места в коде
+- `app/handlers/start.py` — основной файл (~1700 строк):
+  - `_route_already_set()` — хелпер проверки «маршрут уже в БД».
+  - `handle_goal_split_days` (~472), `handle_stale_goal_buttons` (~1652, в конце).
+  - `confirm_goal_flow` (~1518) — постит маршрут в группу.
+  - `confirm_day_tasks` (~1271) — постит дневные задачи в группу.
+  - `_show_day_closed_message` (~103), `_start_goal_flow` (~366).
+- `app/handlers/quiz.py` — квиз + шеринг контакта + welcome.
+- `app/keyboards/inline/start.py` — все клавиатуры.
+- `app/cache.py` — Redis KeyManager (goal_lock, goal_day_lock, day_plan_lock, streak и т.д.).
+
+## Сделано в сессии 15.06 (всё в feature/add-config)
+1. **Извлечение file_id с кружочка/фото** — временные хендлеры (приватный чат, для id 516684869 / 1118823479). **Оба временных перехватчика уже удалены.**
+   - **Отдельный фикс:** перехватчик file_id ловил кружочки и в группе (бот отвечал айди в общий чат). Добавлен фильтр `F.chat.type == "private"` → айди теперь только в личке бота.
+2. **Видео-кружки на экранах цели/маршрута** — file_id вставлены перед «🔥 Цель зафиксирована!» (`DQACAgIAAxkBAAIJ2WovIRV-D8EaM36b9EkcM3QmV5VKAAKZnwACSzGASRFzE7wUgPYzPAQ`) и перед «🚀 Готово…» (`DQACAgIAAxkBAAIJ3GovIl7y-TqRnzydfAABRSzrDtx23AACqJ8AAksxgElxbENHNxKwRTwE`).
+3. **Залипший goal_lock после ресета БД** — Redis-ключ `goal_lock` (TTL 30 дней) переживал сброс БД. Фикс в `_start_goal_flow`: проверяем активную цель в БД, если её нет — удаляем устаревший Redis-ключ.
+4. **Рефералка — полный фикс (была сломана целиком):**
+   - `capture_referral_start` никогда не вызывался → добавили в `cmd_start`: `if args.startswith("ref_"): await referral_service.capture_referral_start(...)`.
+   - `?start=ref_setup` вёл в никуда → добавили `if args == "ref_setup": await _show_referral_invite(...)`.
+   - Кнопка «💸 Рефералка» в `club_main_menu` (`app/keyboards/inline/start.py`).
+   - Объявление в группу при входе реферала: `referral_service.announce_referred_member_joined()`.
+   - **Дубль смс в группу** — `handle_contact_share` слал И реферальное объявление, И generic `community_service.announce_member_joined`. Фикс: generic шлём только если юзер НЕ реферал (проверка `get_referral_by_referred_telegram`).
+   - **Картинка перед маршрутом** (`_send_goal_route_intro`, `GOAL_ROUTE_IMAGE`) — убрана, шлём только текст.
+5. **Реферальный шеринг через inline-режим (итоговый вид):**
+   - Включён Inline Mode в @BotFather (`/setinline`, placeholder «Пригласить друга 🔗»). Без этого код не работает.
+   - Кнопка «🔗 Получить реферальную ссылку» = `switch_inline_query=""` (НЕ `t.me/share/url`).
+   - Inline-хендлер `inline_referral_share` (start.py) отдаёт `InlineQueryResultCachedPhoto`: фото-карточка LedoLab + подпись (текст из `referral_service.build_referral_inline_content`) + инлайн-кнопка «🚀 Вступить в LedoLab Business Club» (url = реф-ссылка).
+   - **file_id картинки карточки:** `REFERRAL_CARD_PHOTO_ID = "AgACAgIAAxkBAAIKdWowbaW6cU3zHGChGVTZ4Bp8Y0CZAAKUHmsbhDCBSYZ-9klgXBR2AQADAgADeAADPAQ"` (константа вверху start.py).
+   - **Почему так (ограничения Telegram):** превью для bot-ссылки `?start=ref_X` Telegram НЕ генерирует. `t.me/share/url` требует `url=` для открытия списка контактов и всегда лепит ссылку ПЕРВОЙ строкой (вниз не убрать). Inline-режим даёт фото+текст+кнопку, но требует 2 тапа (выбрать чат → тапнуть результат) — поведение Telegram, убрать нельзя. Решили оставить красивую карточку с двойным тапом.
+   - Профиль бота: юзер настроил `/setdescription` (текст про клуб) — видно ПОСЛЕ перехода в бота, к реф-смс отношения не имеет.
+
+## Сделано в сессии 16.06 (всё в feature/add-config)
+1. **Откат инлайн-шеринга рефералки** — юзер решил вернуть старую кнопку `t.me/share/url` (инлайн-режим неудобен: 2 тапа, непривычно). `_show_referral_invite` снова использует `url=share_url`. Инлайн-хендлер и `build_referral_inline_content` удалены. Ограничение Telegram: ссылка всегда сверху при `t.me/share/url` — это не лечится без инлайна.
+
+2. **Смарт расписание сообщений (коммит `0574de0`):**
+   - **Раньше было 4 группы/день**: 12:00, 15:00, 20:00, 21:00. Стало **2 группы/день**.
+   - **Группа 13:00** — дневной мотивационный чек-ин (был в 12:00, 15:00 убрали).
+   - **Группа 20:00** — один вечерний пост: мотивация + кол-во без отчёта + топ-3 (объединили 20:00 и 21:00).
+   - **Личка 08:30** — утренний пуш каждому юзеру у кого стоят задачи на сегодня (список задач в смс). Redis-дедупликация `morning_push:{tg_id}:{date}`.
+   - **Личка 21:00** — персональный пуш только тем, кто поставил задачи но не сдал отчёт ("осталось меньше часа"). Дедупликация `evening_push:{tg_id}:{date}`.
+   - Изменённые файлы: `app/database.py` (новые функции `get_users_with_today_tasks`, `get_users_with_tasks_no_report`), `app/services/community_service.py` (новые `send_morning_private_reminders`, `send_personal_evening_reminders`, `send_evening_group_post`; удалены старые), `app/services/scheduler_service.py` (новые окна: `_is_morning_window`, `_is_evening_group_window`, `_is_personal_evening_window`; убрано `_is_day_window`/`_is_reminder_window`).
+
+## Сделано в сессии 17.06 (всё в feature/add-config)
+1. **Кнопка-меню под дневными смс в группу (коммит `ef9e02f`):**
+   - Добавлена `group_menu_keyboard(group_url)` в `app/keyboards/inline/start.py` (кнопка «📌 Меню клуба», url=group_url) — для сообщений, которые бот сам постит ВНУТРИ группы (в отличие от `back_to_group_keyboard`/`return_to_group_keyboard`, которые зовут юзера обратно в группу из личных смс).
+   - Подключена к `send_midday_reminder` (13:00) и `send_evening_group_post` (20:00) в `app/services/community_service.py` — обе теперь шлют `reply_markup=group_menu_keyboard(CLUB_GROUP_URL)`.
+2. **Кнопка «Вернуться в группу» под личными пушами (коммит `1f4b918`):**
+   - `send_morning_private_reminders` (08:30) и `send_personal_evening_reminders` (21:00) теперь шлют `reply_markup=back_to_group_keyboard(CLUB_GROUP_URL)` — ведёт на закреплённое меню группы (т.к. `CLUB_GROUP_URL` с сессии 16.06 указывает на `t.me/c/<chat_id>/<msg_id>`).
+3. **Объяснил юзеру логику отмены напоминаний:** анулирования уже отправленных смс нет — нет очереди отложенных сообщений. `send_personal_evening_reminders` (21:00) просто на момент срабатывания заново запрашивает `get_users_with_tasks_no_report` у БД, и если юзер уже сдал отчёт до 21:00 — он не попадает в список и смс не получает. Для целей (30-дн цель, переход в группу) такой логики НЕТ — это часть нерешённой задачи про smart-эскалацию (см. ниже).
+
+## Открытые/возможные следующие задачи
+- **Смарт-напоминания при многодневной тишине** (эскалация): день 1 личка → день 2 личка настойчивей → день 4 группа → день 7 группа/бан. Обсудили схему, не кодили — юзер пока не решил про бан. Также сейчас вообще нет напоминаний по неактивности с целями (30-дн цель) — только по дневным задачам/отчётам.
+- Рефакторинг `start.py` (юзер хотел разбить файл на части, отложили «на потом»).
+- Юзер планировал протестировать пункты после деплоя и написать что ещё поправить.
+
+## Сделано в сессии 19.06 (всё в feature/add-config, коммит `b0ba34b`)
+1. **Баг «кнопка/ссылка меню ведёт не туда» — найдена реальная причина:** это была НЕ платформенная особенность Telegram (текстовые ссылки vs инлайн-кнопки), а то, что в Railway `CLUB_GROUP_URL` всё ещё был выставлен на старую инвайт-ссылку (`https://t.me/+WzcCVTajwSozNzYy`), и она перекрывала дефолт из кода (`t.me/c/3644975614/1444`). Диагностировали через long-press по ссылке в реальной смс — реальный href оказался инвайтом, а не закрепом.
+2. **Почему просто поменять `CLUB_GROUP_URL` в Railway было нельзя:** аудит всех мест использования `CLUB_GROUP_URL`/`GROUP_ENTRY_URL` показал, что эта переменная также используется как РЕАЛЬНАЯ инвайт-ссылка для новых/ещё не зашедших в группу юзеров (`app/handlers/quiz.py` — кнопка «Зайти в группу» после контакта, `cmd_start` для уже прошедших квиз). Никакой проверки реального membership в группе в коде нет — только DB-флаг `has_completed_quiz`. Значит `t.me/c/...` нельзя ставить туда, где может быть юзер, который физически еще не в группе.
+3. **Решение — завели отдельную переменную `CLUB_MENU_URL`** (`app/config.py`), дефолт в коде = `t.me/c/3644975614/1444`. `CLUB_GROUP_URL`/`GROUP_ENTRY_URL` не трогали — остаются инвайт-ссылкой для новых юзеров.
+4. **`CLUB_MENU_URL` подключена только в 5 местах**, где юзер точно уже в группе:
+   - `app/services/community_service.py`: `_menu_link_line()` (текстовая HTML-ссылка «📌 Меню клуба») — используется в `send_morning_private_reminders` (08:30 личка), `send_personal_evening_reminders` (21:00 личка), `send_midday_reminder` (13:00 группа), `send_evening_group_post` (20:00 группа).
+   - `app/handlers/start.py`: сообщение «Сначала зафиксируй цель» в `_start_day_flow` (когда нет активной цели).
+   - Везде остальные «Вернуться в группу» (`RETURN_GROUP_URL`, `back_to_group_keyboard`, `return_to_group_keyboard`, реферальный экран) — НЕ тронуты, продолжают вести на инвайт через `CLUB_GROUP_URL`.
+5. **Важно для Railway:** нужно добавить новую переменную `CLUB_MENU_URL` = `https://t.me/c/3644975614/1444`. `CLUB_GROUP_URL` оставить как есть (инвайт-ссылка) — её менять НЕ нужно.
+6. **Технические проблемы с пушем в этой сессии (для памяти, если повторится):**
+   - Прямой `git push` несколько раз падал с `403` от локального git-proxy (`http://127.0.0.1:<port>/git/...`).
+   - Альтернативный путь через `mcp__github__push_files` тоже упал с `403 Resource not accessible by integration` — у GitHub-приложения (Installed GitHub Apps → Claude) не было прав `Contents: Read and write` и/или репозиторий не был выбран в Repository access.
+   - Юзер поправил права в GitHub App настройках → обычный `git push` после этого прошёл успешно. Если в будущих сессиях снова будет 403 на push — сразу проверять права GitHub-приложения на стороне GitHub, а не тратить время на ретраи.
+   - Отдельно всплыла **непропущенная подпись коммитов** (stop-hook ругался на «Unverified»): SSH-ключ для подписи (`/home/claude/.ssh/commit_signing_key.pub`) в этом контейнере пустой (0 байт) — подписать коммит физически нельзя, это особенность окружения, не баг проекта. Email/автор коммита (`noreply@anthropic.com` / `Claude`) при этом корректные.
+
+## Открытые/возможные следующие задачи (обновлено 19.06)
+- **Cleanup-кандидат:** `group_menu_keyboard()` в `app/keyboards/inline/start.py` теперь мёртвый код — была добавлена в сессии 17.06 для инлайн-кнопки под групповыми постами, но после перехода на текстовые HTML-ссылки (`_menu_link_line`) больше не используется. Юзер пока не подтвердил удаление.
+- После того как юзер добавит `CLUB_MENU_URL` в Railway и задеплоится новая версия — проверить вживую все 5 смс (08:30, 13:00, 20:00, 21:00, «зафиксируй цель»), что ссылка реально ведёт на закреп, а не на старый инвайт.

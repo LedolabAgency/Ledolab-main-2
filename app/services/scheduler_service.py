@@ -8,8 +8,7 @@ from zoneinfo import ZoneInfo
 from aiogram import Bot
 
 from app import cache
-from app.services import community_service
-from app.services.alert_service import notify_admins_about_error
+from app.services import community_service, escalation_service
 
 logger = logging.getLogger(__name__)
 
@@ -17,19 +16,19 @@ KYIV_TZ = ZoneInfo("Europe/Kiev")
 _scheduler_task: asyncio.Task | None = None
 
 
-def _is_reminder_window(now: datetime) -> bool:
-    return now.hour == 20 and now.minute < 5
+def _is_morning_window(now: datetime) -> bool:
+    return now.hour == 8 and 30 <= now.minute < 35
 
 
 def _is_midday_window(now: datetime) -> bool:
-    return now.hour == 12 and now.minute < 5
+    return now.hour == 13 and now.minute < 5
 
 
-def _is_day_window(now: datetime) -> bool:
-    return now.hour == 15 and now.minute < 5
+def _is_evening_group_window(now: datetime) -> bool:
+    return now.hour == 20 and now.minute < 5
 
 
-def _is_evening_window(now: datetime) -> bool:
+def _is_personal_evening_window(now: datetime) -> bool:
     return now.hour == 21 and now.minute < 5
 
 
@@ -39,36 +38,42 @@ def _is_weekly_final_window(now: datetime) -> bool:
 
 async def _tick(bot: Bot) -> None:
     now = datetime.now(KYIV_TZ)
+    today = now.date().isoformat()
 
-    if _is_reminder_window(now):
-        reminder_key = f"job:report_reminder:{now.date().isoformat()}"
-        if await cache.acquire_lock(reminder_key, ex=12 * 60 * 60):
-            await community_service.send_report_deadline_reminder(bot, now)
-            logger.info("Scheduled report reminder sent for %s", now.date().isoformat())
+    if _is_morning_window(now):
+        morning_key = f"job:morning_push:{today}"
+        if await cache.acquire_lock(morning_key, ex=12 * 60 * 60):
+            await community_service.send_morning_private_reminders(bot, now)
+            logger.info("Morning private push sent for %s", today)
+
+        escalation_key = f"job:escalation:{today}"
+        if await cache.acquire_lock(escalation_key, ex=12 * 60 * 60):
+            await escalation_service.send_escalation_reminders(bot, now)
+            logger.info("Escalation reminders processed for %s", today)
 
     if _is_midday_window(now):
-        midday_key = f"job:midday_reminder:{now.date().isoformat()}"
+        midday_key = f"job:midday_reminder:{today}"
         if await cache.acquire_lock(midday_key, ex=12 * 60 * 60):
             await community_service.send_midday_reminder(bot, now)
-            logger.info("Scheduled midday reminder sent for %s", now.date().isoformat())
+            logger.info("Midday group reminder sent for %s", today)
 
-    if _is_day_window(now):
-        day_key = f"job:day_reminder:{now.date().isoformat()}"
-        if await cache.acquire_lock(day_key, ex=12 * 60 * 60):
-            await community_service.send_day_reminder(bot, now)
-            logger.info("Scheduled day reminder sent for %s", now.date().isoformat())
-
-    if _is_evening_window(now):
-        evening_key = f"job:evening_checkup:{now.date().isoformat()}"
+    if _is_evening_group_window(now):
+        evening_key = f"job:evening_group:{today}"
         if await cache.acquire_lock(evening_key, ex=12 * 60 * 60):
-            await community_service.send_evening_checkup(bot, now)
-            logger.info("Scheduled evening check-up sent for %s", now.date().isoformat())
+            await community_service.send_evening_group_post(bot, now)
+            logger.info("Evening group post sent for %s", today)
+
+    if _is_personal_evening_window(now):
+        personal_key = f"job:personal_evening:{today}"
+        if await cache.acquire_lock(personal_key, ex=12 * 60 * 60):
+            await community_service.send_personal_evening_reminders(bot, now)
+            logger.info("Personal evening reminders sent for %s", today)
 
     if _is_weekly_final_window(now):
-        weekly_key = f"job:weekly_final:{now.date().isoformat()}"
+        weekly_key = f"job:weekly_final:{today}"
         if await cache.acquire_lock(weekly_key, ex=8 * 24 * 60 * 60):
             await community_service.send_weekly_final(bot, now)
-            logger.info("Scheduled weekly final sent for %s", now.date().isoformat())
+            logger.info("Scheduled weekly final sent for %s", today)
 
 
 async def _loop(bot: Bot) -> None:
@@ -79,7 +84,6 @@ async def _loop(bot: Bot) -> None:
             raise
         except Exception as e:
             logger.error("Scheduler tick failed: %s", e, exc_info=True)
-            await notify_admins_about_error(bot, "scheduler.tick", e)
         await asyncio.sleep(30)
 
 
