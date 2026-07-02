@@ -9,7 +9,8 @@ from zoneinfo import ZoneInfo
 from aiogram import Bot
 
 from app import cache, database
-from app.config import CLUB_MENU_URL, REPORTS_GROUP_ID
+from aiogram import types as aiogram_types
+from app.config import CLUB_GROUP_URL, CLUB_MENU_URL, REPORTS_GROUP_ID
 from app.services import mention_service, rating_service
 
 logger = logging.getLogger(__name__)
@@ -232,6 +233,52 @@ async def send_morning_private_reminders(bot: Bot, now: datetime | None = None) 
             await cache.set_data(dedupe_key, "1", ex=20 * 60 * 60)
         except Exception as e:
             logger.warning("Morning push failed | user=%s error=%s", tg_id, e)
+
+
+async def send_morning_day_advance_reminders(bot: Bot, now: datetime | None = None) -> None:
+    """08:30 — напоминание юзерам, закрывшим вчерашний день, поставить задачи на сегодня."""
+    now = now or datetime.now(KYIV_TZ)
+    today = now.date().isoformat()
+    yesterday = (now.date() - timedelta(days=1)).isoformat()
+
+    users = await database.get_users_with_report_yesterday_no_tasks_today(yesterday, today)
+    for user in users:
+        tg_id = int(user.get("telegram_id") or 0)
+        if not tg_id:
+            continue
+
+        dedupe_key = f"day_advance_push:{tg_id}:{today}"
+        if await cache.get_data(dedupe_key):
+            continue
+
+        streak = int((await cache.get_data(cache.KeyManager.get_streak_key(tg_id))) or 0)
+        if streak >= 5:
+            continue
+
+        day_number = min(streak + 1, 5)
+        milestones = user.get("milestones") or []
+        milestone_index = max(0, min(day_number - 1, len(milestones) - 1))
+        focus_text = milestones[milestone_index] if milestones else None
+
+        name = user.get("first_name") or "друг"
+        text = f"🌅 <b>Сегодня твой день {day_number} из 5, {name}.</b>\n\n"
+        if focus_text:
+            text += f"Твой фокус:\n<i>{escape(focus_text)}</i>\n\n"
+        text += "Поставь задачи на день и закрой его отчётом до 22:00 💪"
+
+        menu_url = CLUB_MENU_URL or CLUB_GROUP_URL
+        keyboard = aiogram_types.InlineKeyboardMarkup(
+            inline_keyboard=[[
+                aiogram_types.InlineKeyboardButton(text="📌 Меню клуба", url=menu_url)
+            ]]
+        ) if menu_url else None
+
+        try:
+            await bot.send_message(tg_id, text, parse_mode="HTML", reply_markup=keyboard)
+            await cache.set_data(dedupe_key, "1", ex=20 * 60 * 60)
+            logger.info("Day advance push sent | user=%s day=%s", tg_id, day_number)
+        except Exception as e:
+            logger.warning("Day advance push failed | user=%s error=%s", tg_id, e)
 
 
 async def send_personal_evening_reminders(bot: Bot, now: datetime | None = None) -> None:

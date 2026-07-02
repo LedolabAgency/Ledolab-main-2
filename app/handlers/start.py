@@ -129,6 +129,10 @@ async def _next_path_day_number(telegram_id: int, operational_date: str) -> int:
 
 
 async def _show_day_closed_message(target: types.Message | types.CallbackQuery) -> None:
+    user_id = target.from_user.id
+    dedup_key = f"day_closed_sent:{user_id}:{_club_day_date()}"
+    if not await cache.acquire_lock(dedup_key, ex=30):
+        return
     await _answer_private_with_actions(
         target,
         "🔥 <b>День закрыт.</b>\n\n"
