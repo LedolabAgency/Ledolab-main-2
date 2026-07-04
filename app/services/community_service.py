@@ -297,10 +297,10 @@ async def send_personal_evening_reminders(bot: Bot, now: datetime | None = None)
         name = user.get("first_name") or "друг"
         task_lines = "\n".join(f"• {t}" for t in tasks) if tasks else ""
         text = (
-            f"🌙 {name}, осталось меньше часа!\n\n"
+            f"🌙 {name}, вечер на исходе!\n\n"
             + (f"Твои задачи сегодня:\n{task_lines}\n\n" if task_lines else "")
             + "Отчёт ещё не сдан ⏰\n"
-            "Закрой день — ты почти там 💪"
+            "Сдать можно до 23:59 — закрой день, ты почти там 💪"
             + _menu_link_line()
         )
         try:

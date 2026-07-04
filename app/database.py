@@ -772,6 +772,42 @@ async def get_today_tasks(user_id: str, today: str) -> List[Dict[str, Any]]:
         return []
 
 
+async def get_oldest_open_task_date(user_id: str) -> Optional[str]:
+    """Earliest date that has day tasks but no report row at all.
+
+    Used to enforce "one open day at a time": a user must close the previous
+    day with a report before a new day can be started. Days already acted upon
+    by an admin (approved / rejected / redo_requested) are not considered open —
+    they carry their own flow and must not block progression.
+    """
+    try:
+        sb = get_supabase()
+        task_rows = (
+            sb.table("daily_tasks")
+            .select("date")
+            .eq("user_id", user_id)
+            .in_("task_type", ["day_1", "day_2", "day_3"])
+            .execute()
+        ).data or []
+        task_dates = sorted({r["date"] for r in task_rows if r.get("date")})
+        if not task_dates:
+            return None
+        report_rows = (
+            sb.table("daily_reports")
+            .select("report_date")
+            .eq("user_id", user_id)
+            .execute()
+        ).data or []
+        reported_dates = {r["report_date"] for r in report_rows if r.get("report_date")}
+        for d in task_dates:
+            if d not in reported_dates:
+                return d
+        return None
+    except Exception as e:
+        logger.error("Error getting oldest open task date %s: %s", user_id, e, exc_info=True)
+        return None
+
+
 async def get_task_by_type(user_id: str, today: str, task_type: str = "main") -> Optional[Dict[str, Any]]:
     """Get today's task by task type."""
     try:

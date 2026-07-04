@@ -52,9 +52,8 @@ def _club_now() -> datetime:
 
 
 def _club_day_date(now: datetime | None = None) -> str:
+    # Клубный день = обычный календарный день (00:00–23:59), дедлайн отчёта 23:59.
     current = now or _club_now()
-    if current.hour >= 22:
-        current = current + timedelta(days=1)
     return current.date().isoformat()
 
 
@@ -127,8 +126,10 @@ async def _next_path_day_number(telegram_id: int, operational_date: str) -> int:
 
 async def _show_day_closed_message(target: types.Message | types.CallbackQuery) -> None:
     user_id = target.from_user.id
+    # Короткое окно дедупликации: гасит одновременный двойной клик двух кнопок,
+    # но не глушит осознанный повторный заход через несколько секунд.
     dedup_key = f"day_closed_sent:{user_id}:{_club_day_date()}"
-    if not await cache.acquire_lock(dedup_key, ex=30):
+    if not await cache.acquire_lock(dedup_key, ex=10):
         return
     await _answer_private_with_actions(
         target,
@@ -721,6 +722,22 @@ async def _start_day_flow(message: types.Message, state: FSMContext) -> None:
         return
 
     today = _club_day_date()
+
+    # Один открытый день за раз: пока прошлый день не закрыт отчётом — новый не начать.
+    open_date = await database.get_oldest_open_task_date(user["id"])
+    if open_date and open_date < today:
+        me = await message.bot.get_me()
+        await _answer_private_with_actions(
+            message,
+            "📌 <b>Сначала закрой прошлый день.</b>\n\n"
+            f"За {open_date} задачи есть, а отчёта нет.\n"
+            "Новый день откроется сразу, как только сдашь отчёт за прошлый 👇",
+            inline_markup=open_private_flow_keyboard(me.username, "report_setup", "СДАТЬ ОТЧЕТ"),
+            inline_text="Перейти к отчёту 👇",
+            single_message=True,
+        )
+        return
+
     deadline_text = _club_day_deadline_text()
     today_lock = await cache.get_data(cache.KeyManager.get_day_plan_lock_key(message.from_user.id, today))
     today_tasks = await database.get_today_tasks(user["id"], today)
@@ -778,12 +795,14 @@ async def _start_report_flow(message: types.Message, state: FSMContext) -> None:
         return
 
     today = _club_day_date()
-    existing_report = await database.get_daily_report(user["id"], today)
+    # Отчёт всегда закрывает самый старый незакрытый день (если есть), иначе сегодняшний.
+    report_target = await database.get_oldest_open_task_date(user["id"]) or today
+    existing_report = await database.get_daily_report(user["id"], report_target)
     if existing_report and str(existing_report.get("status") or "").lower() not in {"redo_requested", "rejected"}:
         await _show_day_closed_message(message)
         return
 
-    today_tasks = await database.get_today_tasks(user["id"], today)
+    today_tasks = await database.get_today_tasks(user["id"], report_target)
     task_texts = [
         str(task.get("task_text", "")).strip()
         for task in today_tasks
@@ -813,7 +832,7 @@ async def _start_report_flow(message: types.Message, state: FSMContext) -> None:
     await state.set_state(ReportStates.waiting_proof)
     await state.update_data(
         report_user_id=user["id"],
-        report_date=today,
+        report_date=report_target,
         report_tasks=task_texts,
         report_file_id=None,
         report_started_at=_club_now().timestamp(),
