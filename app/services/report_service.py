@@ -181,6 +181,14 @@ def build_admin_approved_summary(original_text: str) -> str:
     return original_text + "\n\n✅ Отчет проверен админом — все ок."
 
 
+def build_admin_rejected_summary(original_text: str) -> str:
+    return original_text + "\n\n❌ Отчет отклонён админом — баллы сняты."
+
+
+def build_admin_returned_summary(original_text: str) -> str:
+    return original_text + "\n\n💬 Отчет возвращён админом на переделку."
+
+
 def _extract_proof_file_ids(entries: List[Dict[str, Any]]) -> List[str]:
     file_ids: List[str] = []
     for entry in entries:

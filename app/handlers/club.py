@@ -529,6 +529,16 @@ async def reject_report_by_admin(query: types.CallbackQuery) -> None:
     await database.set_daily_report_status(report_id, "rejected")
     # score_awarded уже включает streak-бонус (report_service.save_daily_report), снимаем его целиком.
     await database.award_score(report["user_id"], -int(report.get("score_awarded") or 30), "Daily report rejected by admin")
+    if report.get("group_chat_id") and report.get("group_message_id"):
+        try:
+            await query.bot.edit_message_text(
+                chat_id=report["group_chat_id"],
+                message_id=report["group_message_id"],
+                text=report_service.build_admin_rejected_summary(report.get("summary_text", "")),
+                reply_markup=None,
+            )
+        except Exception as e:
+            logger.warning("Could not mark group report as rejected: %s", e)
     warnings = await database.increment_user_warnings(report["user_id"], 3)
     if int((warnings or {}).get("warnings_count") or 0) >= 2:
         await database.award_score(report["user_id"], -report_service.WARNING_SCORE_PENALTY, "Warning penalty")
@@ -588,6 +598,16 @@ async def save_admin_report_comment(message: types.Message, state: FSMContext) -
     await database.set_daily_report_status(report_id, "redo_requested", admin_comment=comment_text)
     # score_awarded уже включает streak-бонус (report_service.save_daily_report), снимаем его целиком.
     await database.award_score(report["user_id"], -int(report.get("score_awarded") or 30), "Daily report sent back for redo")
+    if report.get("group_chat_id") and report.get("group_message_id"):
+        try:
+            await message.bot.edit_message_text(
+                chat_id=report["group_chat_id"],
+                message_id=report["group_message_id"],
+                text=report_service.build_admin_returned_summary(report.get("summary_text", "")),
+                reply_markup=None,
+            )
+        except Exception as e:
+            logger.warning("Could not mark group report as returned: %s", e)
 
     user_info = await database.get_club_user_by_id(report["user_id"])
     if user_info and user_info.get("telegram_id"):
