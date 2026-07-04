@@ -227,15 +227,6 @@ def seconds_until_next_sunday_21() -> int:
     return max(ttl, 60)
 
 
-def seconds_until_next_22() -> int:
-    """Return seconds until the next Kyiv 22:00."""
-    now = datetime.now(KYIV_TZ)
-    target = now.replace(hour=22, minute=0, second=0, microsecond=0)
-    if target <= now:
-        target += timedelta(days=1)
-    ttl = int((target - now).total_seconds())
-    return max(ttl, 60)
-
 
 async def delete_keys_by_patterns(patterns: list[str]) -> int:
     """Delete all Redis keys matching the provided patterns."""
