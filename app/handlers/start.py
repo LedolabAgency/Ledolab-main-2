@@ -52,9 +52,8 @@ def _club_now() -> datetime:
 
 
 def _club_day_date(now: datetime | None = None) -> str:
+    # Клубный день = обычный календарный день (00:00–23:59), дедлайн отчёта 23:59.
     current = now or _club_now()
-    if current.hour >= 22:
-        current = current + timedelta(days=1)
     return current.date().isoformat()
 
 
@@ -127,8 +126,10 @@ async def _next_path_day_number(telegram_id: int, operational_date: str) -> int:
 
 async def _show_day_closed_message(target: types.Message | types.CallbackQuery) -> None:
     user_id = target.from_user.id
+    # Короткое окно дедупликации: гасит одновременный двойной клик двух кнопок,
+    # но не глушит осознанный повторный заход через несколько секунд.
     dedup_key = f"day_closed_sent:{user_id}:{_club_day_date()}"
-    if not await cache.acquire_lock(dedup_key, ex=30):
+    if not await cache.acquire_lock(dedup_key, ex=10):
         return
     await _answer_private_with_actions(
         target,

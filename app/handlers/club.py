@@ -28,11 +28,8 @@ KYIV_TZ = ZoneInfo("Europe/Kiev")
 
 
 def _today() -> str:
-    now = datetime.now(KYIV_TZ)
-    if now.hour >= 22:
-        now = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        now = now + timedelta(days=1)
-    return now.date().isoformat()
+    # Клубный день = обычный календарный день (00:00–23:59), дедлайн отчёта 23:59.
+    return datetime.now(KYIV_TZ).date().isoformat()
 
 
 def _last_group_chat_key(user_id: int) -> str:
@@ -530,10 +527,8 @@ async def reject_report_by_admin(query: types.CallbackQuery) -> None:
         return
 
     await database.set_daily_report_status(report_id, "rejected")
+    # score_awarded уже включает streak-бонус (report_service.save_daily_report), снимаем его целиком.
     await database.award_score(report["user_id"], -int(report.get("score_awarded") or 30), "Daily report rejected by admin")
-    bonus_awarded = report_service.get_report_bonus_awarded(report)
-    if bonus_awarded > 0:
-        await database.award_score(report["user_id"], -bonus_awarded, "LedoBonus revoked after reject")
     warnings = await database.increment_user_warnings(report["user_id"], 3)
     if int((warnings or {}).get("warnings_count") or 0) >= 2:
         await database.award_score(report["user_id"], -report_service.WARNING_SCORE_PENALTY, "Warning penalty")
@@ -591,10 +586,8 @@ async def save_admin_report_comment(message: types.Message, state: FSMContext) -
 
     comment_text = (message.text or "").strip()
     await database.set_daily_report_status(report_id, "redo_requested", admin_comment=comment_text)
+    # score_awarded уже включает streak-бонус (report_service.save_daily_report), снимаем его целиком.
     await database.award_score(report["user_id"], -int(report.get("score_awarded") or 30), "Daily report sent back for redo")
-    bonus_awarded = report_service.get_report_bonus_awarded(report)
-    if bonus_awarded > 0:
-        await database.award_score(report["user_id"], -bonus_awarded, "LedoBonus revoked after redo")
 
     user_info = await database.get_club_user_by_id(report["user_id"])
     if user_info and user_info.get("telegram_id"):
