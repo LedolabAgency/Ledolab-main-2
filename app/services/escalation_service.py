@@ -192,6 +192,8 @@ def all_user_redis_patterns(telegram_id: int) -> list[str]:
         f"escalation:{tid}:*",
         f"task:{tid}:*",
         f"morning_push:{tid}:*",
+        f"day_advance_push:{tid}:*",
+        f"day_closed_sent:{tid}:*",
         f"evening_push:{tid}:*",
         f"throttle:*:{tid}",
         f"leda_fsm:*{tid}*",

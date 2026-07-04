@@ -45,7 +45,7 @@ async def close_redis() -> None:
             await redis_client.aclose()
             logger.info("🛑 Redis connection closed")
         except Exception as e:
-            logger.error(f"Error closing Redis: {e}")
+            logger.warning("Error closing Redis: %s", e)
 
 
 async def set_data(key: str, value: str, ex: Optional[int] = None) -> None:
@@ -62,7 +62,7 @@ async def set_data(key: str, value: str, ex: Optional[int] = None) -> None:
     try:
         await redis_client.set(key, value, ex=ex)
     except Exception as e:
-        logger.error(f"Error setting Redis key {key}: {e}")
+        logger.warning("Error setting Redis key %s: %s", key, e)
 
 
 async def get_data(key: str) -> Optional[str]:
@@ -80,7 +80,7 @@ async def get_data(key: str) -> Optional[str]:
     try:
         return await redis_client.get(key)
     except Exception as e:
-        logger.error(f"Error getting Redis key {key}: {e}")
+        logger.warning("Error getting Redis key %s: %s", key, e)
         return None
 
 
@@ -100,7 +100,7 @@ async def delete_data(key: str) -> bool:
         result = await redis_client.delete(key)
         return bool(result)
     except Exception as e:
-        logger.error(f"Error deleting Redis key {key}: {e}")
+        logger.warning("Error deleting Redis key %s: %s", key, e)
         return False
 
 
@@ -120,7 +120,7 @@ async def acquire_lock(key: str, ex: int = 1) -> bool:
     try:
         return await redis_client.set(key, "1", ex=ex, nx=True)
     except Exception as e:
-        logger.error(f"Error acquiring lock {key}: {e}")
+        logger.warning("acquire_lock failed (transient) %s: %s", key, e)
         return False
 
 
@@ -227,15 +227,6 @@ def seconds_until_next_sunday_21() -> int:
     return max(ttl, 60)
 
 
-def seconds_until_next_22() -> int:
-    """Return seconds until the next Kyiv 22:00."""
-    now = datetime.now(KYIV_TZ)
-    target = now.replace(hour=22, minute=0, second=0, microsecond=0)
-    if target <= now:
-        target += timedelta(days=1)
-    ttl = int((target - now).total_seconds())
-    return max(ttl, 60)
-
 
 async def delete_keys_by_patterns(patterns: list[str]) -> int:
     """Delete all Redis keys matching the provided patterns."""
@@ -249,5 +240,5 @@ async def delete_keys_by_patterns(patterns: list[str]) -> int:
                 deleted += int(await redis_client.delete(key))
         return deleted
     except Exception as e:
-        logger.error(f"Error deleting Redis keys by patterns {patterns}: {e}", exc_info=True)
+        logger.warning("Error deleting Redis keys by patterns: %s", e, exc_info=True)
         return deleted

@@ -1521,6 +1521,66 @@ async def get_users_with_tasks_no_report(today: str) -> List[Dict[str, Any]]:
         return []
 
 
+async def get_users_with_report_yesterday_no_tasks_today(
+    yesterday: str, today: str
+) -> List[Dict[str, Any]]:
+    """Return users who submitted a report for yesterday but haven't set tasks for today yet."""
+    try:
+        sb = get_supabase()
+        report_rows = (
+            sb.table("daily_reports")
+            .select("user_id,status")
+            .eq("report_date", yesterday)
+            .execute()
+        ).data or []
+        reported_ids = list({
+            r["user_id"] for r in report_rows
+            if str(r.get("status") or "").lower() not in {"redo_requested", "rejected"}
+        })
+        if not reported_ids:
+            return []
+
+        task_rows = (
+            sb.table("daily_tasks")
+            .select("user_id")
+            .eq("date", today)
+            .execute()
+        ).data or []
+        users_with_tasks = {r["user_id"] for r in task_rows}
+
+        need_reminder = [uid for uid in reported_ids if uid not in users_with_tasks]
+        if not need_reminder:
+            return []
+
+        users = (
+            sb.table("users")
+            .select("id,telegram_id,username,first_name,is_banned")
+            .in_("id", need_reminder)
+            .execute()
+        ).data or []
+
+        goal_rows = (
+            sb.table("goals")
+            .select("user_id,milestones")
+            .in_("user_id", need_reminder)
+            .eq("status", "active")
+            .execute()
+        ).data or []
+        goal_by_user = {g["user_id"]: g.get("milestones") or [] for g in goal_rows}
+
+        return [
+            {**u, "milestones": goal_by_user.get(u["id"], [])}
+            for u in users
+            if not u.get("is_banned")
+        ]
+    except Exception as e:
+        logger.error(
+            "Error in get_users_with_report_yesterday_no_tasks_today %s/%s: %s",
+            yesterday, today, e, exc_info=True,
+        )
+        return []
+
+
 async def mark_daily_status(user_id: str, status_date: str, status: str) -> bool:
     """Persist a neutral or failed day marker."""
     try:

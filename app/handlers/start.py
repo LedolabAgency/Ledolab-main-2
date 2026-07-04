@@ -59,10 +59,7 @@ def _club_day_date(now: datetime | None = None) -> str:
 
 
 def _club_day_deadline_text(now: datetime | None = None) -> str:
-    current = now or _club_now()
-    if current.hour >= 22:
-        return "до 22:00 завтрашнего дня"
-    return "до 22:00 сегодняшнего дня"
+    return "до 23:59 сегодняшнего дня"
 
 
 def _parse_goal_created_at(goal: dict) -> datetime | None:
@@ -129,6 +126,10 @@ async def _next_path_day_number(telegram_id: int, operational_date: str) -> int:
 
 
 async def _show_day_closed_message(target: types.Message | types.CallbackQuery) -> None:
+    user_id = target.from_user.id
+    dedup_key = f"day_closed_sent:{user_id}:{_club_day_date()}"
+    if not await cache.acquire_lock(dedup_key, ex=30):
+        return
     await _answer_private_with_actions(
         target,
         "🔥 <b>День закрыт.</b>\n\n"
@@ -1419,7 +1420,7 @@ async def confirm_day_tasks(query: types.CallbackQuery, state: FSMContext) -> No
     await cache.set_data(
         cache.KeyManager.get_day_plan_lock_key(query.from_user.id, operational_date),
         "1",
-        ex=cache.seconds_until_next_22(),
+        ex=cache.seconds_until_midnight(),
     )
 
     if REPORTS_GROUP_ID:

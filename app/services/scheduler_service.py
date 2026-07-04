@@ -46,6 +46,11 @@ async def _tick(bot: Bot) -> None:
             await community_service.send_morning_private_reminders(bot, now)
             logger.info("Morning private push sent for %s", today)
 
+        advance_key = f"job:day_advance_push:{today}"
+        if await cache.acquire_lock(advance_key, ex=12 * 60 * 60):
+            await community_service.send_morning_day_advance_reminders(bot, now)
+            logger.info("Day advance reminders sent for %s", today)
+
         escalation_key = f"job:escalation:{today}"
         if await cache.acquire_lock(escalation_key, ex=12 * 60 * 60):
             await escalation_service.send_escalation_reminders(bot, now)
