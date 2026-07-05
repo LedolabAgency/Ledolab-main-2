@@ -25,12 +25,9 @@ STREAK_BONUSES = {
 
 
 def _week_window(now: datetime) -> tuple[datetime, datetime]:
-    """Current club week [Sunday 22:00, next Sunday 22:00) — matches the weekly leaderboard."""
-    days_since_sunday = (now.weekday() + 1) % 7
-    last_sunday = now.date() - timedelta(days=days_since_sunday)
-    week_start = datetime.combine(last_sunday, time(22, 0), tzinfo=cache.KYIV_TZ)
-    if now < week_start:
-        week_start -= timedelta(days=7)
+    """Current club week [Monday 00:00, next Monday 00:00) — matches the weekly leaderboard."""
+    monday = now.date() - timedelta(days=now.weekday())  # weekday(): Mon=0 … Sun=6
+    week_start = datetime.combine(monday, time(0, 0), tzinfo=cache.KYIV_TZ)
     return week_start, week_start + timedelta(days=7)
 
 
