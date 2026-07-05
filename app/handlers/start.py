@@ -1198,7 +1198,7 @@ async def send_daily_report(query: types.CallbackQuery, state: FSMContext) -> No
     )
 
     await state.clear()
-    bonus_awarded = int(report.get("bonus_awarded") or 0)
+    bonus_awarded = int(report.get("streak_bonus") or 0)
     streak_day = int(report.get("current_streak") or 0)
     weekly_ledoscore = int(report.get("weekly_ledoscore") or 0)
     route_completed = streak_day > 0 and streak_day % 5 == 0

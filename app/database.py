@@ -1367,6 +1367,24 @@ async def get_top_users(limit: int = 10) -> List[Dict[str, Any]]:
         return []
 
 
+async def get_user_score_for_period(user_id: str, start_iso: str, end_iso: str) -> int:
+    """Sum a single user's score points within [start_iso, end_iso)."""
+    try:
+        sb = get_supabase()
+        rows = (
+            sb.table("scores")
+            .select("points,created_at")
+            .eq("user_id", user_id)
+            .gte("created_at", start_iso)
+            .lt("created_at", end_iso)
+            .execute()
+        ).data or []
+        return sum(int(r.get("points") or 0) for r in rows)
+    except Exception as e:
+        logger.error("Error getting period score for %s: %s", user_id, e, exc_info=True)
+        return 0
+
+
 async def get_top_users_for_period(start_iso: str, end_iso: str, limit: int = 10) -> List[Dict[str, Any]]:
     """Aggregate scores for a specific period and return ranked users."""
     try:

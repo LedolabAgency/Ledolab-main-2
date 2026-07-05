@@ -33,7 +33,9 @@ def _is_personal_evening_window(now: datetime) -> bool:
 
 
 def _is_weekly_final_window(now: datetime) -> bool:
-    return now.weekday() == 6 and now.hour == 22 and now.minute < 5
+    # Неделя = Пн 00:00 → Вс 23:59. Финалку постим на границе (Пн 00:00),
+    # чтобы недельный лидерборд показывал только что завершившуюся неделю.
+    return now.weekday() == 0 and now.hour == 0 and now.minute < 5
 
 
 async def _tick(bot: Bot) -> None:
