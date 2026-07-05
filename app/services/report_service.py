@@ -5,7 +5,7 @@ Service layer for daily report submission, public moderation, and admin review.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, time, timedelta
 from html import escape
 from typing import Any, Dict, List, Optional
 
@@ -21,8 +21,17 @@ WARNING_SCORE_PENALTY = 15
 STREAK_BONUSES = {
     3: 10,
     5: 25,
-    10: 50,
 }
+
+
+def _week_window(now: datetime) -> tuple[datetime, datetime]:
+    """Current club week [Sunday 22:00, next Sunday 22:00) — matches the weekly leaderboard."""
+    days_since_sunday = (now.weekday() + 1) % 7
+    last_sunday = now.date() - timedelta(days=days_since_sunday)
+    week_start = datetime.combine(last_sunday, time(22, 0), tzinfo=cache.KYIV_TZ)
+    if now < week_start:
+        week_start -= timedelta(days=7)
+    return week_start, week_start + timedelta(days=7)
 
 
 def report_task_prompt(task_number: int, task_text: str) -> str:
@@ -281,10 +290,15 @@ async def save_daily_report(
             total_ledoscore=total_ledoscore,
         )
         await database.update_daily_report_summary_text(report["id"], summary_text)
+        week_start, week_end = _week_window(datetime.now(cache.KYIV_TZ))
+        weekly_ledoscore = await database.get_user_score_for_period(
+            user_id, week_start.isoformat(), week_end.isoformat()
+        )
         report["summary_text"] = summary_text
         report["current_streak"] = new_streak
         report["streak_bonus"] = streak_bonus
         report["total_ledoscore"] = total_ledoscore
+        report["weekly_ledoscore"] = weekly_ledoscore
         return report
     except Exception as e:
         logger.error(f"Error saving daily report {user_id}: {e}", exc_info=True)
