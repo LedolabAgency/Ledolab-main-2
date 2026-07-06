@@ -23,17 +23,6 @@ async def _attach_streaks(users: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return enriched
 
 
-async def get_rating_leaderboard(limit: int = 10) -> List[Dict[str, Any]]:
-    try:
-        users = await database.get_top_users(500)
-        users = await _attach_streaks(users)
-        logger.info("✅ Rating generated: %s users", len(users))
-        return users[:limit]
-    except Exception as e:
-        logger.error(f"Error getting rating: {e}", exc_info=True)
-        return []
-
-
 async def get_period_leaderboard(start_iso: str, end_iso: str, limit: int = 10) -> List[Dict[str, Any]]:
     try:
         users = await database.get_top_users_for_period(start_iso, end_iso, limit=500)
@@ -49,23 +38,6 @@ async def get_current_week_leaderboard(limit: int = 10) -> List[Dict[str, Any]]:
     Resets automatically every Monday — old weeks fall out of the window."""
     week_start, week_end = cache.club_week_window()
     return await get_period_leaderboard(week_start.isoformat(), week_end.isoformat(), limit)
-
-
-async def get_user_rating_position(telegram_id: int) -> Optional[Dict[str, Any]]:
-    try:
-        users = await database.get_top_users(500)
-        users = await _attach_streaks(users)
-        for idx, user in enumerate(users, 1):
-            if int(user.get("telegram_id") or 0) == telegram_id:
-                return {
-                    "place": idx,
-                    "total_score": int(user.get("total_score", 0)),
-                    "streak": int(user.get("streak", 0)),
-                }
-        return None
-    except Exception as e:
-        logger.error(f"Error getting user rating position {telegram_id}: {e}", exc_info=True)
-        return None
 
 
 def _display_label(user: Dict[str, Any]) -> str:
