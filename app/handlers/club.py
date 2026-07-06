@@ -419,7 +419,7 @@ async def show_rating(query: types.CallbackQuery) -> None:
         )
         return
 
-    users = await rating_service.get_rating_leaderboard()
+    users = await rating_service.get_current_week_leaderboard()
     text = await rating_service.format_rating_text(users, viewer_telegram_id=query.from_user.id)
     await query.message.answer(text)
     await query.answer("Рейтинг обновлен.")
