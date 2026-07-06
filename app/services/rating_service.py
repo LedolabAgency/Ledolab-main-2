@@ -44,6 +44,13 @@ async def get_period_leaderboard(start_iso: str, end_iso: str, limit: int = 10) 
         return []
 
 
+async def get_current_week_leaderboard(limit: int = 10) -> List[Dict[str, Any]]:
+    """Leaderboard for the current club week (Mon 00:00 → Sun 23:59).
+    Resets automatically every Monday — old weeks fall out of the window."""
+    week_start, week_end = cache.club_week_window()
+    return await get_period_leaderboard(week_start.isoformat(), week_end.isoformat(), limit)
+
+
 async def get_user_rating_position(telegram_id: int) -> Optional[Dict[str, Any]]:
     try:
         users = await database.get_top_users(500)
@@ -77,10 +84,13 @@ def _streak_progress(streak: int) -> tuple[int, str]:
 
 async def format_rating_text(users: List[Dict[str, Any]], viewer_telegram_id: Optional[int] = None) -> str:
     if not users:
-        return "🏆 Рейтинг LedoLab Business Club\n\nПока в рейтинге еще нет участников."
+        return (
+            "🏆 Рейтинг недели LedoLab Business Club (Пн–Вс)\n\n"
+            "На этой неделе рейтинг пока пуст — сдай отчёт и открой счёт 💪"
+        )
 
     medals = ["🥇", "🥈", "🥉"]
-    lines = ["🏆 Рейтинг LedoLab Business Club\n"]
+    lines = ["🏆 Рейтинг недели LedoLab Business Club (Пн–Вс)\n"]
 
     top_three = users[:3]
     for idx, user in enumerate(top_three, 1):

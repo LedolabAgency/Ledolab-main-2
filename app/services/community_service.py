@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import random
-from datetime import datetime, time, timedelta
+from datetime import datetime, timedelta
 from html import escape
 from zoneinfo import ZoneInfo
 
@@ -78,10 +78,8 @@ def _menu_link_line() -> str:
 
 
 def _week_window(now: datetime) -> tuple[datetime, datetime]:
-    """Current club week [Monday 00:00, next Monday 00:00) — Пн 00:00 → Вс 23:59."""
-    monday = now.date() - timedelta(days=now.weekday())  # weekday(): Mon=0 … Sun=6
-    week_start = datetime.combine(monday, time(0, 0), tzinfo=KYIV_TZ)
-    return week_start, week_start + timedelta(days=7)
+    """Current club week — delegates to the single source of truth in cache."""
+    return cache.club_week_window(now)
 
 
 def _is_active_report_window(now: datetime) -> bool:
@@ -341,7 +339,7 @@ async def send_evening_group_post(bot: Bot, now: datetime | None = None) -> None
     analytics = await database.get_admin_analytics(now.date().isoformat())
     missing_reports = max(int(analytics.get("missing_reports_today", 0)), 0)
 
-    top_users = await rating_service.get_rating_leaderboard(limit=3)
+    top_users = await rating_service.get_current_week_leaderboard(limit=3)
     medal_lines = []
     medals = ["🥇", "🥈", "🥉"]
     for idx, user in enumerate(top_users, 1):

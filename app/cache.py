@@ -4,7 +4,7 @@ Handles FSM storage, distributed locks, and caching.
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
 import redis.asyncio as redis
@@ -205,6 +205,18 @@ class KeyManager:
         In-flight FSM callbacks check this and bail out early, preventing
         stale confirmations from being sent after the user was wiped."""
         return f"user_reset:{user_id}"
+
+
+def club_week_window(now: Optional[datetime] = None) -> tuple[datetime, datetime]:
+    """Current club week [Monday 00:00, next Monday 00:00) — Пн 00:00 → Вс 23:59.
+
+    Single source of truth for the weekly window: rating, weekly LedoScore and
+    the weekly final all derive from this so they can never drift apart.
+    """
+    now = now or datetime.now(KYIV_TZ)
+    monday = now.date() - timedelta(days=now.weekday())  # weekday(): Mon=0 … Sun=6
+    week_start = datetime.combine(monday, time(0, 0), tzinfo=KYIV_TZ)
+    return week_start, week_start + timedelta(days=7)
 
 
 def seconds_until_midnight() -> int:

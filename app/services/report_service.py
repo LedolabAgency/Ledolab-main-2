@@ -5,7 +5,7 @@ Service layer for daily report submission, public moderation, and admin review.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, time, timedelta
+from datetime import datetime
 from html import escape
 from typing import Any, Dict, List, Optional
 
@@ -25,10 +25,8 @@ STREAK_BONUSES = {
 
 
 def _week_window(now: datetime) -> tuple[datetime, datetime]:
-    """Current club week [Monday 00:00, next Monday 00:00) — matches the weekly leaderboard."""
-    monday = now.date() - timedelta(days=now.weekday())  # weekday(): Mon=0 … Sun=6
-    week_start = datetime.combine(monday, time(0, 0), tzinfo=cache.KYIV_TZ)
-    return week_start, week_start + timedelta(days=7)
+    """Current club week — delegates to the single source of truth in cache."""
+    return cache.club_week_window(now)
 
 
 def report_task_prompt(task_number: int, task_text: str) -> str:
