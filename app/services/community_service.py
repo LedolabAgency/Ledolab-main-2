@@ -337,7 +337,7 @@ async def send_evening_group_post(bot: Bot, now: datetime | None = None) -> None
         return
 
     analytics = await database.get_admin_analytics(now.date().isoformat())
-    missing_reports = max(int(analytics.get("missing_reports_today", 0)), 0)
+    reported_today = max(int(analytics.get("reported_today", 0)), 0)
 
     top_users = await rating_service.get_current_week_leaderboard(limit=3)
     medal_lines = []
@@ -361,7 +361,8 @@ async def send_evening_group_post(bot: Bot, now: datetime | None = None) -> None
     intro = _pick_phrase(EVENING_REMINDER_PHRASES, now)
     text = (
         f"{intro}\n\n"
-        f"До 23:59 ещё можно закрыть день. Без отчёта: {missing_reports} чел.\n\n"
+        f"До 23:59 ещё можно закрыть день сильным отчётом.\n"
+        f"Сегодня отчёт уже сдали: {reported_today} чел.\n\n"
         + (
             "🏆 ТОП-3 СЕЙЧАС:\n\n" + top_block
             if top_block

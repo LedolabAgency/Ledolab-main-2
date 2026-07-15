@@ -18,6 +18,18 @@ KYIV_TZ = ZoneInfo("Europe/Kiev")
 ALERT_COOLDOWN_SECONDS = 300
 _last_alerts: dict[str, float] = {}
 
+# Транзиентные, самовосстанавливающиеся ошибки — не шлём по ним alert админам.
+# aiogram сам переподключается к Telegram и продолжает polling.
+_IGNORED_LOG_SUBSTRINGS = (
+    "Conflict: terminated by other getUpdates request",  # перекрытие старого/нового инстанса при редеплое
+    "Failed to fetch updates",                            # транзиентный сбой polling-цикла aiogram
+    "Connection reset by peer",
+    "Server disconnected",
+    "ServerDisconnectedError",
+    "ClientOSError",
+    "TelegramNetworkError",
+)
+
 
 def _is_on_cooldown(key: str) -> bool:
     now = time.time()
@@ -68,8 +80,8 @@ class TelegramLogHandler(logging.Handler):
             return  # never re-notify about our own send failures
 
         message = record.getMessage()
-        if "Conflict: terminated by other getUpdates request" in message:
-            return  # harmless overlap between old/new instance during a redeploy
+        if any(substr in message for substr in _IGNORED_LOG_SUBSTRINGS):
+            return  # transient / self-recovering network noise — aiogram retries on its own
 
         try:
             loop = asyncio.get_running_loop()
