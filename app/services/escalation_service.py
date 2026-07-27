@@ -30,10 +30,32 @@ KYIV_TZ = ZoneInfo("Europe/Kiev")
 
 STAGE_OFFSET_DAYS = {1: 1, 2: 4, 3: 7, 4: 10}
 ESCALATION_LOCK_TTL = 30 * 24 * 60 * 60
+# Таймер бана: юзер вылетает и не может вернуться N дней (Telegram сам снимет бан).
+AUTO_REMOVE_BAN_DAYS = 7
 
 
 def _escalation_lock_key(telegram_id: int, stuck_date: str, stage: int) -> str:
     return f"escalation:{telegram_id}:{stuck_date}:{stage}"
+
+
+async def _is_protected_member(bot: Bot, telegram_id: int) -> bool:
+    """Админов (ADMIN_IDS) и владельца/админов группы бот НИКОГДА не кикает и не удаляет.
+
+    На ошибке get_chat_member возвращаем True (fail-closed): лучше не тронуть,
+    чем случайно снести админа — как было с владельцем группы.
+    """
+    if telegram_id in ADMIN_IDS:
+        return True
+    if not REPORTS_GROUP_ID:
+        return False
+    try:
+        member = await bot.get_chat_member(REPORTS_GROUP_ID, telegram_id)
+        status_raw = getattr(member, "status", "")
+        status = str(getattr(status_raw, "value", None) or status_raw).lower().strip()
+        return status in {"creator", "administrator"} or status.endswith((".creator", ".administrator"))
+    except Exception as e:
+        logger.warning("Could not check group status for %s (treating as protected): %s", telegram_id, e)
+        return True
 
 
 def _format_task_list(tasks: list[str]) -> str:
@@ -119,15 +141,27 @@ async def _auto_delete_user(bot: Bot, user: dict[str, Any], stuck_date: str, day
     )
     result = await delete_user_everywhere(bot, telegram_id)
 
+    if result.get("protected"):
+        logger.info("Auto-delete skipped: %s is admin/owner", telegram_id)
+        return
+
     label = f"@{user['username']}" if user.get("username") else (user.get("first_name") or "Участник")
     tasks_text = _format_task_list(user.get("tasks") or [])
-    admin_text = (
-        f"🗑 Юзер {label} (id <code>{telegram_id}</code>) автоматически удалён "
-        f"после {days_overdue} дней без отчёта (с {stuck_date}).\n\n"
-        f"Незакрытые задачи:\n{tasks_text}\n\n"
-        f"Кикнут: {result.get('kicked')}, "
-        f"ключей Redis удалено: {result.get('redis_deleted')}"
-    )
+
+    if not result.get("wiped"):
+        admin_text = (
+            f"⚠️ Не удалось удалить {label} (id <code>{telegram_id}</code>) — "
+            f"бот не смог убрать его из группы (проверь права бота).\n"
+            "Данные НЕ стёрты."
+        )
+    else:
+        admin_text = (
+            f"🗑 Юзер {label} (id <code>{telegram_id}</code>) автоматически удалён "
+            f"после {days_overdue} дней без отчёта (с {stuck_date}).\n\n"
+            f"Незакрытые задачи:\n{tasks_text}\n\n"
+            f"Забанен в группе на {AUTO_REMOVE_BAN_DAYS} дней, "
+            f"ключей Redis удалено: {result.get('redis_deleted')}"
+        )
     for admin_id in ADMIN_IDS:
         try:
             await bot.send_message(admin_id, admin_text, parse_mode="HTML")
@@ -158,6 +192,11 @@ async def send_escalation_reminders(bot: Bot, now: datetime | None = None) -> No
                 continue
             lock_key = _escalation_lock_key(telegram_id, stuck_date, stage)
             if not await cache.acquire_lock(lock_key, ex=ESCALATION_LOCK_TTL):
+                continue
+            # Стадии 3 (алерт на удаление) и 4 (автоудаление) не применяем к админам/владельцу.
+            # Напоминания (стадии 1-2) им по-прежнему уходят.
+            if stage in (3, 4) and await _is_protected_member(bot, telegram_id):
+                logger.info("Escalation stage %s skipped (admin/owner) | user=%s", stage, telegram_id)
                 continue
             if stage == 3:
                 await _send_admin_alert(bot, user, stuck_date, offset)
@@ -200,20 +239,41 @@ def all_user_redis_patterns(telegram_id: int) -> list[str]:
     ]
 
 
-async def delete_user_everywhere(bot: Bot, telegram_id: int) -> dict[str, Any]:
-    """Kick the user from the club group, wipe their DB rows and clear all Redis state."""
-    result: dict[str, Any] = {"kicked": False, "db_stats": {}, "redis_deleted": 0}
+async def delete_user_everywhere(
+    bot: Bot, telegram_id: int, now: datetime | None = None
+) -> dict[str, Any]:
+    """Timed-ban the user from the club group, then wipe DB rows and Redis state.
 
-    await cache.set_data(cache.KeyManager.get_user_reset_key(telegram_id), "1", ex=120)
+    Never touches admins/owner (returns protected=True). If the group ban fails,
+    we DON'T wipe the DB — that avoids a "ghost" (data gone but user still in group),
+    exactly the bug that hit the group owner.
+    """
+    result: dict[str, Any] = {
+        "kicked": False, "protected": False, "wiped": False,
+        "db_stats": {}, "redis_deleted": 0,
+    }
+    now = now or datetime.now(KYIV_TZ)
+
+    if await _is_protected_member(bot, telegram_id):
+        result["protected"] = True
+        logger.info("Delete skipped: %s is admin/owner (protected)", telegram_id)
+        return result
 
     if REPORTS_GROUP_ID:
         try:
-            await bot.ban_chat_member(chat_id=REPORTS_GROUP_ID, user_id=telegram_id)
-            await bot.unban_chat_member(chat_id=REPORTS_GROUP_ID, user_id=telegram_id)
+            await bot.ban_chat_member(
+                chat_id=REPORTS_GROUP_ID,
+                user_id=telegram_id,
+                until_date=now + timedelta(days=AUTO_REMOVE_BAN_DAYS),
+            )
             result["kicked"] = True
         except Exception as e:
-            logger.warning("Failed to kick %s from group %s: %s", telegram_id, REPORTS_GROUP_ID, e)
+            logger.warning("Failed to ban %s from group %s: %s", telegram_id, REPORTS_GROUP_ID, e)
+            return result  # removal failed → keep DB intact, no ghost
 
+    # Ban succeeded (or no group configured) → wipe everything.
+    await cache.set_data(cache.KeyManager.get_user_reset_key(telegram_id), "1", ex=120)
     result["db_stats"] = await database.reset_user_data(telegram_id)
     result["redis_deleted"] = await cache.delete_keys_by_patterns(all_user_redis_patterns(telegram_id))
+    result["wiped"] = True
     return result

@@ -654,12 +654,27 @@ async def confirm_delete_escalated_user(query: types.CallbackQuery) -> None:
     stats = await escalation_service.delete_user_everywhere(query.bot, target_id)
     logger.info("ADMIN escalation delete | admin=%s target=%s stats=%s", query.from_user.id, target_id, stats)
 
-    kicked_text = "кикнут из группы ✅" if stats["kicked"] else "кикнуть из группы не удалось ⚠️ (проверь права бота)"
+    if stats.get("protected"):
+        await query.message.edit_text(
+            f"⛔️ Юзер <code>{target_id}</code> — админ или владелец группы.\n"
+            "Бот не может его удалить (ограничение Telegram). Данные не тронуты."
+        )
+        await query.answer("Нельзя удалить админа/владельца.", show_alert=True)
+        return
+
+    if not stats.get("wiped"):
+        await query.message.edit_text(
+            f"⚠️ Не удалось убрать <code>{target_id}</code> из группы (проверь права бота).\n"
+            "Данные НЕ стёрты, чтобы не оставить «призрака»."
+        )
+        await query.answer("Не удалось удалить.", show_alert=True)
+        return
+
     db_stats = stats.get("db_stats") or {}
     db_text = "\n".join(f"{name}: {count}" for name, count in db_stats.items() if count)
     await query.message.edit_text(
         f"🗑 Юзер <code>{target_id}</code> удален.\n\n"
-        f"{kicked_text}\n"
+        f"Забанен в группе на {escalation_service.AUTO_REMOVE_BAN_DAYS} дней ✅\n"
         f"Redis ключей удалено: {stats['redis_deleted']}\n\n"
         f"{db_text or 'В БД активных записей не было.'}"
     )
